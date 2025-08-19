@@ -13,3 +13,7 @@
 | MMGraphRAG: Bridging Vision and Language with Interpretable Multimodal Knowledge Graphs | https://arxiv.org/abs/2507.20804 https://github.com/wanxueyao/MMGraphRAG | Multimodal Graph RAG | Arxiv |
 | Medical Graph RAG: Towards Safe Medical Large Language Model via Graph Retrieval-Augmented Generation | https://arxiv.org/abs/2408.04187 https://github.com/SuperMedIntel/Medical-Graph-RAG | Medical Graph RAG | ACL 2025 |
 | Efficient Tuning of Large Language Models for Knowledge-Grounded Dialogue Generation | https://arxiv.org/abs/2504.07754 | PubMed-QA to PubMed-Dialog | Arxiv |
+
+----------------------
+SLACK
+<img width="389" height="389" alt="image" src="https://github.com/user-attachments/assets/22005361-cbf1-406f-8166-6f0e419007c3" />
