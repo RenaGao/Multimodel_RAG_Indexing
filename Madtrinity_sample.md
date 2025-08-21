@@ -23,12 +23,14 @@ Caption: The image is a non-contrasted computed tomography (CT) scan of the brai
 <img width="389" height="389" alt="image" src="https://github.com/user-attachments/assets/1606eaee-c008-4b2a-94dd-839ddf57549e" />
 
 --- Image: train_11206.jpg ---
+
 Caption: The image is a histological slide showing gastric tissue with marked atrophy and disappearance of gastric glands, indicative of intestinal metaplasia. The region of interest is located horizontally on the left and vertically at the bottom, occupying an area ratio of 1.3%. This region shows a significant reduction in gastric glands and the presence of goblet cells, which are not typically found in gastric tissue. The content in the region of interest suggests a pathological change that is likely affecting the surrounding gastric tissue, indicating a progression of intestinal metaplasia.
 
 <img width="515" height="195" alt="image" src="https://github.com/user-attachments/assets/fa574506-260b-4c98-b991-ffe179818c7a" />
 
 ----------
 --- Image: train_12242.jpg ---
+
 Caption: The image consists of two photomicrographs showing adipose tissue. The left photomicrograph displays a general view of adipose tissue with numerous adipocytes, characterized by large, clear vacuoles and peripheral nuclei. The right photomicrograph includes an inset that provides a close-up view of a typical lipoblast with multivacuolated cytoplasm indenting the atypical nucleus. The region of interest is located at the bottom right of the right photomicrograph, occupying approximately 0.6% of the area. This region shows atypical cells with multivacuolated cytoplasm and indented nuclei, indicative of a pathological condition. The content in the region of interest suggests the presence of lipoblasts, which may indicate a liposarcoma, and this abnormality is likely affecting the surrounding adipose tissue.
 
 <img width="515" height="214" alt="image" src="https://github.com/user-attachments/assets/09802628-a320-4a50-89a6-27cc331bea02" />
