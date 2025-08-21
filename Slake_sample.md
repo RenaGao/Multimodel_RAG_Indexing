@@ -4,4 +4,4 @@ SLACK
 
 question: 图片中包含肝脏吗?
 
-answer': 包含
+answer: 包含
