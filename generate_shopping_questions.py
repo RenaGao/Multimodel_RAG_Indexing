@@ -1,27 +1,19 @@
-
 from openai import OpenAI
 import json
 from tqdm import tqdm
 import os
+import ast
 
-# -------------------------------
-# 0. 初始化 OpenAI 客户端
-# -------------------------------
-# export OPENAI_API_KEY="aaa"
+# -------------------------------------
+# 0. Initialize OpenAI client
+# -------------------------------------
+# Make sure you have set your API key:
+# export OPENAI_API_KEY="your_api_key"
 client = OpenAI()
 
-# -------------------------------
-# 1. 定义 shopping domain 列表
-# -------------------------------
-# shopping_domains = [
-# "All_Beauty", 
-# "Amazon_Fashion", 
-# "Appliances",
-# "Arts_Crafts_and_Sewing",
-# "Automotive", 
-# ]
-
-
+# -------------------------------------
+# 1. Define shopping domain list
+# -------------------------------------
 shopping_domains = [
     "All_Beauty",
     "Amazon_Fashion",
@@ -59,22 +51,11 @@ shopping_domains = [
     "Unknown",
 ]
 
+print("Shopping domains:", shopping_domains)
 
-print("shopping domains: ", shopping_domains)
-
-
-# -------------------------------
-# 2. Prompt 模板定义
-# -------------------------------
-# prompt_template = """
-# You are an e-commerce user interacting with an AI shopping assistant.
-# Generate 15 natural, diverse, realistic customer questions about the "{domain}" domain.
-# Each question should sound like it comes from a real shopper and should cover different intents
-# (e.g., product search, availability, delivery, return policy, price comparison, recommendation).
-# Output only a valid Python list of strings (no explanations, no extra text).
-# """
-
-
+# -------------------------------------
+# 2. Prompt template definition
+# -------------------------------------
 prompt_template = """
 You are an e-commerce user interacting with an AI shopping assistant.
 Generate 15 natural, diverse, realistic customer questions about the "{domain}" domain.
@@ -83,12 +64,12 @@ Each question should sound like it comes from a real shopper and should cover di
 Output only a valid list of strings (no explanations, no extra text).
 """
 
-# -------------------------------
-# 3. 生成函数
-# -------------------------------
-def generate_questions(domain: str, model="gpt-4o-mini"):
+# -------------------------------------
+# 3. Question generation function
+# -------------------------------------
+def generate_questions(domain: str, model: str = "gpt-4o-mini"):
     """
-    Generate a list of shopping-related customer questions for a given domain.
+    Generate a list of realistic shopping-related customer questions for a given domain.
     """
     prompt = prompt_template.format(domain=domain)
 
@@ -97,30 +78,34 @@ def generate_questions(domain: str, model="gpt-4o-mini"):
             model=model,
             messages=[
                 {"role": "system", "content": "You are a helpful data generation assistant."},
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": prompt},
             ],
-            temperature=0.9,  
-            max_tokens=800
+            temperature=0.9,
+            max_tokens=800,
         )
 
         content = response.choices[0].message.content.strip()
 
-        # 是 Python list 格式
+        # Try parsing as a Python list
         if content.startswith("[") and content.endswith("]"):
-            data = eval(content)
+            try:
+                data = ast.literal_eval(content)
+            except Exception:
+                # Fallback: parse line by line
+                data = [line.strip("-• \n") for line in content.split("\n") if line.strip()]
         else:
-            # 尝试简单解析
+            # Fallback: parse line by line
             data = [line.strip("-• \n") for line in content.split("\n") if line.strip()]
 
         return data
 
     except Exception as e:
-        print(f"[Error] Failed to generate for {domain}: {e}")
+        print(f"[Error] Failed to generate questions for '{domain}': {e}")
         return []
 
-# -------------------------------
-# 4. 主逻辑
-# -------------------------------
+# -------------------------------------
+# 4. Main logic
+# -------------------------------------
 if __name__ == "__main__":
     print("Generating shopping domain user questions...\n")
     all_data = {}
@@ -129,9 +114,9 @@ if __name__ == "__main__":
         questions = generate_questions(domain)
         all_data[domain] = questions
 
-    # -------------------------------
-    # 5. 保存为 JSON 文件
-    # -------------------------------
+    # -------------------------------------
+    # 5. Save results as a JSON file
+    # -------------------------------------
     os.makedirs("outputs", exist_ok=True)
     output_path = os.path.join("outputs", "shopping_user_questions.json")
 
