@@ -1,2 +1,7 @@
 EcomMMMU.json
 questions_test.py
+/data
+/logs
+/lora_query_gen
+dataset_split.py
+/cache_images
