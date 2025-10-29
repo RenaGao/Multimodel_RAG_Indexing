@@ -22,23 +22,48 @@ def finetune_LLM_with_lora(data_file="./data/dataset_1-10.json", model_name="fac
     # =====================
     # Load and parse dataset
     # =====================
+
     with open(data_file, "r", encoding="utf-8") as f:
         raw_data = json.load(f)
 
     train_texts, train_labels = [], []
+    pairs = []
 
     for item in raw_data:
-        if "input" in item:
-            product_info = json.loads(item["input"])
-            title = product_info.get("product title", "")
-            doc = product_info.get("document", "")
-            doc_text = " ".join(doc) if isinstance(doc, list) else str(doc)
-            query = product_info.get("query", "")
+        try:
+            input_obj = json.loads(item.get("input", "{}"))
+            title = input_obj.get("product title", "")
+            document = input_obj.get("document", "")
+            doc_text = " ".join(document) if isinstance(document, list) else str(document)
 
-            # Construct prompt
-            input_text = f"Product Title: {title}\nProduct Description: {doc_text}\nTask: Generate a likely user search query.\nOutput:"
+            # Get the query/question
+            query = input_obj.get("query") or input_obj.get("question")
+
+            # Filter data that have no query or title/doc_text
+            if not query or not (title or doc_text):
+                continue
+
+            # Construct the prompt
+            input_text = (
+                f"Product Title: {title}\n"
+                f"Product Description: {doc_text}\n"
+                f"Task: Generate a likely user search query or question.\nOutput:"
+            )
             train_texts.append(input_text)
             train_labels.append(query)
+
+            # Save pair for reference
+            pairs.append({"input_text": input_text, "query": query})
+
+        except Exception:
+            continue
+
+
+    # Save pairs to JSONL file
+    with open("pairs.jsonl", "w", encoding="utf-8") as f:
+        for pair in pairs:
+            f.write(json.dumps(pair, ensure_ascii=False) + "\n")
+
 
     # Split into train/validation
     train_texts, val_texts, train_labels, val_labels = train_test_split(
