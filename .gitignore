@@ -6,3 +6,6 @@ questions_test.py
 /cache_images
 /outputs
 pairs.jsonl
+.env
+.venv
+__pycache__
