@@ -20,7 +20,7 @@ def main():
 
     all_categories_list = load_all_categories(json_path)
 
-    # TODO: selected_categories = all_categories_list, select first 2 category for now
+    # TODO: selected_categories = all_categories_list, select first 2 categories for now
     selected_categories = all_categories_list[:2]
     
     # how many questions can run for one category
