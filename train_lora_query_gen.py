@@ -18,7 +18,7 @@ from peft import LoraConfig, get_peft_model, TaskType
 from sklearn.model_selection import train_test_split
 
 
-def finetune_LLM_with_lora(data_file="./data/dataset_1-10.json", model_name="facebook/opt-1.3b"):
+def finetune_LLM_with_lora(data_file="./data/dataset_1-10.json", model_name="facebook/opt-125m"):
     # =====================
     # Load and parse dataset
     # =====================
@@ -118,6 +118,7 @@ def finetune_LLM_with_lora(data_file="./data/dataset_1-10.json", model_name="fac
         model_name,
         device_map="auto",
         torch_dtype=torch.float32,
+        # offload_folder="./offload",
         low_cpu_mem_usage=True
     )
 
@@ -189,7 +190,7 @@ def main():
 
     # Example inference
     example_title = "Neutrogena Anti-Residue Clarifying Shampoo"
-    example_doc = "Gentle clarifying shampoo to remove hair build-up."
+    example_doc = "Gentle clarifying shampoo to remove hair build-up." # or can be blank
     generated_query = generate_query(model, tokenizer, example_title, example_doc)
     print("Generated query:", generated_query)
 
