@@ -16,6 +16,7 @@ from datasets import Dataset, DatasetDict
 from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments
 from peft import LoraConfig, get_peft_model, TaskType
 from sklearn.model_selection import train_test_split
+from datetime import datetime
 
 
 def finetune_LLM_with_lora(data_file="./data/dataset_1-10.json", model_name="facebook/opt-125m"):
@@ -186,7 +187,7 @@ def generate_query(model, tokenizer, product_title, product_doc, max_new_tokens=
 
 def main():
     # Fine-tune model
-    model, tokenizer = finetune_LLM_with_lora()
+    model, tokenizer = finetune_LLM_with_lora(data_file="./data/dataset_1-10.json", model_name="facebook/opt-125m")
 
     # Example inference
     example_title = "Neutrogena Anti-Residue Clarifying Shampoo"
