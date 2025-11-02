@@ -5,5 +5,5 @@ pairs.jsonl
 /logs
 /lora_query_gen
 /cache_images
-/outputs
+# /outputs
 /offload
