@@ -9,7 +9,7 @@ import json
 def main():
 
     load_dotenv()
-    assert os.getenv("OPENAI_API_KEY"), "Missing OPENAI_API_KEY in .env"
+    assert os.getenv("QWEN_API_KEY"), "Missing QWEN_API_KEY in .env"
 
     # question json file
     json_path = "../outputs/shopping_user_questions_trimmed.json"
@@ -27,7 +27,13 @@ def main():
     # store output for json format
     results = {}
 
-    llm_config = {"config_list": [{"model": "gpt-5-nano", "api_key": None}]}
+    llm_config = {
+            "config_list": [{
+                "model": "qwen/qwen3-vl-8b-instruct",
+                "api_key": os.getenv("QWEN_API_KEY"),
+                "base_url": "https://openrouter.ai/api/v1"
+            }]
+        }
 
     for category in selected_categories:
         questions = all_questions_dict[category]

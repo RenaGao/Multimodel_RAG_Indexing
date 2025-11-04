@@ -29,12 +29,30 @@ def main():
     # store output for json format
     results = {}
 
-    llm_config = {"config_list": [{"model": "gpt-5-nano", "api_key": None}]}
+    # TODO: replace Qwen3 VL 8B Instruct
+    llm_config = {
+            "config_list": [{
+                "model": "qwen/qwen3-vl-8b-instruct",
+                "api_key": os.getenv("QWEN_API_KEY"),
+                "base_url": "https://openrouter.ai/api/v1"
+            }]
+        }
 
+    # TODO: random extract questions from different categories
+    # TODO: user base
     for category in selected_categories:
         questions = all_questions_dict[category]
         if per_category_limit:
             questions = questions[:per_category_limit]
+
+        # TODO: add dialogue history agent between user proxy and recommend
+        dialogue_history_agent = AssistantAgent(
+            name=f"Dialogue_History_{category}",
+            llm_config=llm_config,
+            system_message=(
+                "You are a dialogue history. You mush get user information from chat histroy."
+            ),
+        )
 
         # separate agent based on category
         recommend_agent = AssistantAgent(
@@ -54,12 +72,12 @@ def main():
                 f"You only provide explanation of the rationale for the previous recommendations from Recommender_{category}."
             ),
         )
+
         user = UserProxyAgent(
             name=f"User_{category}",
             human_input_mode="NEVER",
             code_execution_config=False,
         )
-
 
         recommend_agent.register_for_llm(name="ragSearch", description="A search tool to retrive data from a vector database.")(rag_search)
         user.register_for_execution(name="ragSearch")(rag_search)
