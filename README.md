@@ -1,4 +1,4 @@
-# Multimodel_RAG_Indexing
+# Multimodal_RAG_Indexing
 
 | Paper / Project | Link | Keywords | Conference |
 | --- | --- | --- |---|

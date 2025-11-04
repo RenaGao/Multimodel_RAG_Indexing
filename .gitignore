@@ -1,10 +1,14 @@
 EcomMMMU.json
 questions_test.py
 pairs.jsonl
+pairs.jsonl
 /data
 /logs
 /lora_query_gen
 /cache_images
+# /outputs
+/offload
+
 /outputs
 pairs.jsonl
 .env

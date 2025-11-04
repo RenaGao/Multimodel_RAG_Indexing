@@ -3,6 +3,7 @@ import json
 from tqdm import tqdm
 import os
 import ast
+from datetime import datetime
 
 # -------------------------------------
 # 0. Initialize OpenAI client
@@ -57,11 +58,44 @@ print("Shopping domains:", shopping_domains)
 # 2. Prompt template definition
 # -------------------------------------
 prompt_template = """
-You are an e-commerce user interacting with an AI shopping assistant.
-Generate 15 natural, diverse, realistic customer questions about the "{domain}" domain.
+
+[System Prompt]
+personalized conversational agent for {domain} shopping.
+Generate 3 natural, diverse, realistic customer questions about the "{domain}" domain.
 Each question should sound like it comes from a real shopper and should cover different intents
 (e.g., product search, availability, delivery, return policy, price comparison, recommendation).
-Output only a valid list of strings (no explanations, no extra text).
+Your goal is not only to answer but also to continue the conversation naturally — 
+ask appropriate follow-up questions when useful, showing genuine curiosity and understanding.
+
+[User Context]
+Assume a general online shopper with varied interests, neutral tone, and no prior purchase history.
+You don’t have access to personal data — focus on creating realistic and relatable shopping questions.
+
+[Session Context]
+No previous messages or conversation history are provided.
+You are starting a new session about {domain} products.
+
+[Product Information]
+No specific products or brands are given.
+Base your questions on common types of items, features, and concerns relevant to {domain} shopping.
+
+[Instruction]
+Generate a response that:
+1. Provides a relevant and empathetic reply to the user’s current message.
+2. Reflects understanding of user’s intent and emotions.
+3. Naturally introduces a follow-up question **IF**:
+   - The user’s intent or preferences are unclear;
+   - There is potential to refine recommendation;
+   - The user shows hesitation or curiosity.
+4. Follow-up questions should be short, context-aware, and non-intrusive.
+5. Keep tone aligned with the user’s communication style.
+
+Output in the format as follow:
+{{
+  "response": "...",  
+  "reasoning": "why this response fits user context",
+  "follow_up": "..."  # optional, leave blank if not needed
+}}
 """
 
 # -------------------------------------
@@ -117,10 +151,11 @@ if __name__ == "__main__":
     # -------------------------------------
     # 5. Save results as a JSON file
     # -------------------------------------
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     os.makedirs("outputs", exist_ok=True)
-    output_path = os.path.join("outputs", "shopping_user_questions.json")
+    output_path = os.path.join("outputs", "shopping_user_questions_{ts}.json".format(ts=ts))
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(all_data, f, ensure_ascii=False, indent=2)
 
-    print(f"\n✅ Generation completed! File saved to: {output_path}")
+    print(f"\n Generation completed! File saved to: {output_path}")
