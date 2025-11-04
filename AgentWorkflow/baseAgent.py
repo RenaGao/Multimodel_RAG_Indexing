@@ -9,7 +9,7 @@ import json
 def make_simple_flow(user_agent, recommender, reasoner):
     # must keep groupchat here as it required by autogen framework
     def select_next(last_speaker, groupchat):
-        """User -> Recommender -> Reasoner -> 结束"""
+        """User -> Recommender -> Reasoner -> End"""
         if last_speaker is user_agent:
             return recommender
         if last_speaker is recommender:
