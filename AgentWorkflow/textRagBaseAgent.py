@@ -11,7 +11,7 @@ from ragFunction import rag_search
 def main():
 
     load_dotenv()
-    assert os.getenv("OPENAI_API_KEY"), "Missing OPENAI_API_KEY in .env"
+    assert os.getenv("QWEN_API_KEY"), "Missing QWEN_API_KEY in .env"
 
     # question json file
     json_path = "../outputs/shopping_user_questions_trimmed.json"
@@ -29,7 +29,7 @@ def main():
     # store output for json format
     results = {}
 
-    # TODO: replace Qwen3 VL 8B Instruct
+    # replace Qwen3 VL 8B Instruct
     llm_config = {
             "config_list": [{
                 "model": "qwen/qwen3-vl-8b-instruct",
@@ -38,14 +38,12 @@ def main():
             }]
         }
 
-    # TODO: random extract questions from different categories
-    # TODO: user base
+    # TODO: user base, random extract questions from different categories
     for category in selected_categories:
         questions = all_questions_dict[category]
         if per_category_limit:
             questions = questions[:per_category_limit]
 
-        # TODO: add dialogue history agent between user proxy and recommend
         dialogue_history_agent = AssistantAgent(
             name=f"Dialogue_History_{category}",
             llm_config=llm_config,
@@ -54,7 +52,6 @@ def main():
             ),
         )
 
-        # separate agent based on category
         recommend_agent = AssistantAgent(
             name=f"Recommender_{category}",
             llm_config=llm_config,
@@ -102,7 +99,7 @@ def main():
         for i, q in enumerate(questions, start=1):
 
             groupchat = GroupChat(
-                agents=[user, recommend_agent, reason_agent],
+                agents=[user, dialogue_history_agent, recommend_agent, reason_agent],
                 messages=list(category_history),
                 max_round=5,
                 speaker_selection_method="round_robin",
