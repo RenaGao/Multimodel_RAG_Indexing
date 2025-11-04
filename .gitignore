@@ -6,13 +6,8 @@ pairs.jsonl
 /logs
 /lora_query_gen
 /cache_images
-# /outputs
-/offload
-
 /outputs
 pairs.jsonl
 .env
 .venv
 __pycache__
-# /outputs
-/offload
