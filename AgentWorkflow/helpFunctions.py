@@ -6,12 +6,12 @@ def load_all_questions(json_path: str) -> dict:
         return json.load(f)
     
 
-def load_all_categories(json_path: str) -> list:
-    """Get all categories from json file"""
+def load_all_users(json_path: str) -> list:
+    """Get all users from json file"""
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     
-    categories = list(data.keys())
-    assert categories
-    return categories
+    users = list(data.keys())
+    assert users
+    return users
 
