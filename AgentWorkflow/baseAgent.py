@@ -61,18 +61,6 @@ def main():
             code_execution_config=False,
         )
 
-        groupchat = GroupChat(
-            agents=[user, recommend_agent, reason_agent],
-            messages=[],
-            max_round= 3, # only allow user -> recommend -> reason
-            speaker_selection_method="round_robin"
-        )
-
-        manager = GroupChatManager(
-            groupchat=groupchat,
-            llm_config=llm_config,
-        )
-
         # output separated by category
         results[category] = []
 

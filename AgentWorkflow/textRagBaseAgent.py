@@ -5,7 +5,7 @@ from helpFunctions import load_all_questions, load_all_categories
 from datetime import datetime
 from pathlib import Path
 import json
-from ragFunction import rag_search
+from AgentWorkflow.ragFunctions import rag_search_for_recommend_agent
 
 
 def main():
@@ -45,28 +45,30 @@ def main():
             questions = questions[:per_category_limit]
 
         dialogue_history_agent = AssistantAgent(
-            name=f"Dialogue_History_{category}",
+            name=f"Dialogue_History_{category}_agent",
             llm_config=llm_config,
             system_message=(
-                "You are a dialogue history. You mush get user information from chat histroy."
+                "You are a dialogue history agent. "
+                "You MUST call the tool 'rag_search_for_recommend_agent' once. "
+                "Using the tool's result, then give label(s) to user"
             ),
         )
 
         recommend_agent = AssistantAgent(
-            name=f"Recommender_{category}",
+            name=f"Recommender_{category}_agent",
             llm_config=llm_config,
             system_message=(
                 "You are a shopping recommender. "
-                "When the user asks for recommendations, you MUST call the tool 'ragSearch' and ONLY once. "
+                "When the user asks for recommendations, you MUST call the tool 'rag_search_for_recommend_agent' once. "
                 "Using the tool's result then give user recommendation."
             ),
         )
 
         reason_agent = AssistantAgent(
-            name=f"Reasoner_{category}",
+            name=f"Reasoner_{category}_agent",
             llm_config=llm_config,
             system_message=(
-                f"You only provide explanation of the rationale for the previous recommendations from Recommender_{category}."
+                f"You only provide explanation of the rationale for the previous Dialogue_History_{category}_agent and Recommender_{category}_agent."
             ),
         )
 
@@ -76,20 +78,8 @@ def main():
             code_execution_config=False,
         )
 
-        recommend_agent.register_for_llm(name="ragSearch", description="A search tool to retrive data from a vector database.")(rag_search)
-        user.register_for_execution(name="ragSearch")(rag_search)
-
-        groupchat = GroupChat(
-            agents=[user, recommend_agent, reason_agent],
-            messages=[],
-            max_round= 3,
-            speaker_selection_method="round_robin"
-        )
-
-        manager = GroupChatManager(
-            groupchat=groupchat,
-            llm_config=llm_config,
-        )
+        recommend_agent.register_for_llm(name="ragSearch", description="A search tool to retrive data from a vector database.")(rag_search_for_recommend_agent)
+        user.register_for_execution(name="ragSearch")(rag_search_for_recommend_agent)
 
         # output separated by category
         results[category] = []
