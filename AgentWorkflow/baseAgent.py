@@ -6,12 +6,26 @@ from datetime import datetime
 from pathlib import Path
 import json
 
+def make_simple_flow(user_agent, recommender, reasoner):
+    # must keep groupchat here as it required by autogen framework
+    def select_next(last_speaker, groupchat):
+        """User -> Recommender -> Reasoner -> 结束"""
+        if last_speaker is user_agent:
+            return recommender
+        if last_speaker is recommender:
+            return reasoner
+        if last_speaker is reasoner:
+            return None
+        # first time user agent
+        return user_agent
+    return select_next
+
 def main():
 
     load_dotenv()
     assert os.getenv("QWEN_API_KEY"), "Missing QWEN_API_KEY in .env"
 
-    # question json file
+    # question json file path
     # TODO: need this format of question list
     json_path = "temp_user_based_question_list.json"
 
@@ -56,7 +70,7 @@ def main():
                 f"You only provide explanation of the rationale for the previous recommendations from Recommender_{user}_agent."
             ),
         )
-        user = UserProxyAgent(
+        user_proxy_agent = UserProxyAgent(
             name=f"User_{user}",
             human_input_mode="NEVER",
             code_execution_config=False,
@@ -70,15 +84,15 @@ def main():
         for i, q in enumerate(questions, start=1):
 
             groupchat = GroupChat(
-                agents=[user, recommend_agent, reason_agent],
+                agents=[user_proxy_agent, recommend_agent, reason_agent],
                 messages=list(category_history),
-                max_round=3,
-                speaker_selection_method="round_robin",
+                max_round=4, # no need to restrict as we already defined the workflow, still put a number here
+                speaker_selection_method=make_simple_flow(user_proxy_agent, recommend_agent, reason_agent)
             )
 
             manager = GroupChatManager(groupchat=groupchat, llm_config=llm_config)
 
-            user.initiate_chat(manager, message=q)
+            user_proxy_agent.initiate_chat(manager, message=q)
 
             new_msgs = groupchat.messages[:]
             category_history.extend(new_msgs)
