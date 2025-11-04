@@ -9,3 +9,5 @@ pairs.jsonl
 .env
 .venv
 __pycache__
+# /outputs
+/offload
