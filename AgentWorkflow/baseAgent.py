@@ -86,7 +86,7 @@ def main():
             groupchat = GroupChat(
                 agents=[user_proxy_agent, recommend_agent, reason_agent],
                 messages=list(category_history),
-                max_round=4, # no need to restrict as we already defined the workflow, still put a number here
+                max_round=6, # no need to restrict as we already defined the workflow, still put a lao liu here
                 speaker_selection_method=make_simple_flow(user_proxy_agent, recommend_agent, reason_agent)
             )
 

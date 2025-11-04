@@ -3,6 +3,7 @@ from typing import List
 def save_chat_history(chat_history: str) -> bool:
     # TODO: save into vector database
     print(f"[SAVE] {chat_history}")
+    print(f"[SAVE FINISH]")
     return True
 
 # TODO:
