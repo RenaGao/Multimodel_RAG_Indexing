@@ -1,13 +1,12 @@
 from typing import List
 
-
 def save_chat_history(chat_history: str) -> bool:
     # TODO: save into vector database
     return True
 
 
 # TODO:
-def rag_search_for_dialogure_history_agent(user_name:str) -> str:
+def rag_search_for_dialogue_history_agent(user_name:str) -> str:
     
     return """
     [
