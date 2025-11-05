@@ -66,11 +66,11 @@ def sample_dataset(data, fraction=0.001, seed=42, save_path=None):
 
 if __name__ == "__main__":
     dataset_path = "data/dataset.json"
-    subset_path = "data/dataset_1-10.json"
+    subset_path = "data/dataset_1-10000.json"
 
     data = load_json_dataset(dataset_path)
     summarize_dataset(data)
 
-    sampled_data = sample_dataset(data, fraction=0.1, save_path=subset_path)
+    sampled_data = sample_dataset(data, fraction=0.0001, save_path=subset_path)
     summarize_dataset(sampled_data)
     show_samples(sampled_data, n=2)
