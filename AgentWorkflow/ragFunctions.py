@@ -25,7 +25,7 @@ def rag_search_for_dialogue_history_agent(user_name:str) -> str:
     return "function found and executed."
 
 # TODO:
-def rag_search_for_recommend_agent(user_query: str, user_labels: List[str], top_k: int) -> str:
+def rag_search_for_recommend_agent(user_query: str, dialogue_summary: str, top_k: int) -> str:
     
     return """
     [
