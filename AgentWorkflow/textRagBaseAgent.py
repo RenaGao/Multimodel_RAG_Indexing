@@ -8,31 +8,83 @@ from pathlib import Path
 import json
 from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, rag_search_for_reason_agent
 
-
+# TODO: can be changed based on Rag need
 def make_save_hook(agent_name: str):
-    """save chat into vector database"""
+    """Save the latest inbound event for this agent before it replies."""
     def _hook(recipient, messages, sender, config):
-        if messages:
-            msg = messages[-1]
-            save_chat_history(f"[{agent_name}] {str(msg)}")
+        try:
+            if not messages:
+                return False, None
+            
+            msg = messages[-1]  # the newest inbound message for this agent
+            sender_name = getattr(sender, "name", "Unknown")
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+
+            tool_bits = []
+            if msg.get("tool_calls"):
+                tool_bits.append(f"tool_calls={str(msg['tool_calls'])}")
+            if msg.get("function_call"):
+                tool_bits.append(f"function_call={str(msg['function_call'])}")
+            if role in ("tool", "function"):
+                tool_bits.append(f"tool_return(name={msg.get('name')}, content={str(content)[:400]})")
+
+            history_str = (
+                f"[AGENT:{agent_name}] "
+                f"[FROM:{sender_name}] "
+                f"[ROLE:{role}] "
+                f"[TEXT:{str(content)[:]}] "
+                + (f"[TOOLS:{' | '.join(tool_bits)}]" if tool_bits else "")
+            )
+
+            save_chat_history(history_str)
+        except Exception as e:
+            save_chat_history(f"[AGENT:{agent_name}] [SAVE_ERROR:{e}]")
+
         return False, None
     return _hook
 
 def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent):
-    """User -> DialogueHistory -> Recommend -> Reason -> End"""
-    def select_next(last_speaker, _groupchat):
+    """
+    Flow:
+      User -> DialogueHistory (handles its tool call cycles)
+           -> Recommender     (handles its tool call cycles)
+           -> Reasoner        (handles its tool call cycles)
+           -> End
+    """
+    def _last(gc):
+        return (gc.messages or [None])[-1] or {}
+
+    def _has_tool_calls(msg: dict) -> bool:
+        return isinstance(msg, dict) and bool(msg.get("tool_calls"))
+
+    def _is_tool_return(msg: dict) -> bool:
+        return isinstance(msg, dict) and msg.get("role") == "tool"
+
+    def select_next(last_speaker, groupchat):
+        last = _last(groupchat)
+
+        if last_speaker is None and not groupchat.messages:
+            return user_agent
+
+        if _has_tool_calls(last) or _is_tool_return(last):
+            return last_speaker
+        
         if last_speaker is user_agent:
             return dh_agent
+
         if last_speaker is dh_agent:
             return rec_agent
+
         if last_speaker is rec_agent:
             return rsn_agent
+
         if last_speaker is rsn_agent:
             return None
-        # first time user agent speak
-        return user_agent
-    return select_next
 
+        return user_agent
+
+    return select_next
 
 def main():
 
@@ -61,7 +113,8 @@ def main():
             "config_list": [{
                 "model": "qwen/qwen3-vl-8b-instruct",
                 "api_key": os.getenv("QWEN_API_KEY"),
-                "base_url": "https://openrouter.ai/api/v1"
+                "base_url": "https://openrouter.ai/api/v1",
+                "price": [0.001, 0.002] # remove autogen price warning
             }]
         }
 
@@ -74,9 +127,13 @@ def main():
             name=f"Dialogue_History_{user}_agent",
             llm_config=llm_config,
             system_message=(
-                "You are a dialogue history agent. "
-                f"You MUST call the tool 'rag_search_for_dialogue_history_agent' once to search {user} preference. "
-                "Using the tool's result, then give label(s) to user"
+                    "You are a Dialogue History Agent. "
+                    "Your task has exactly two steps and must stop after completing them:\n"
+                    "Step 1: Immediately call the tool 'rag_search_for_dialogue_history_agent' once "
+                    f"to retrieve past dialogue and preference information for the user '{user}'.\n"
+                    "Step 2: Using only the tool result, generate concise summary of preferences. "
+                    "Do not call any other tools, and do not produce any response before the tool result is obtained. "
+                    "End your turn after generating the final response."
             ),
         )
 
@@ -84,9 +141,13 @@ def main():
             name=f"Recommender_{user}_agent",
             llm_config=llm_config,
             system_message=(
-                "You are a shopping recommender. "
-                "When the user asks for recommendations, you MUST call the tool 'rag_search_for_recommend_agent' once. "
-                "Using the tool's result then give user recommendation."
+                    "You are a Shopping Recommender Agent. "
+                    "Your task has exactly two steps and must stop after completing them:\n"
+                    "Step 1: Immediately call the tool 'rag_search_for_recommend_agent' once "
+                    "to retrieve recommendation candidates relevant to the user's query and labels.\n"
+                    "Step 2: Based solely on the tool result, generate the product recommendation(s) for the user. "
+                    "Do not call any other tools, and do not respond before the tool result is returned. "
+                    "End your turn after providing the recommendation."
             ),
         )
 
@@ -94,9 +155,13 @@ def main():
             name=f"Reasoner_{user}_agent",
             llm_config=llm_config,
             system_message=(
-                "You only provide explanation of the rationale for the previous user label and recommendations. "
-                "You MUST call the tool 'rag_search_for_reason_agent' once. "
-                "Using the tool's result, then give reason(s) to user"
+                    "You are a Reasoning Agent that provides the rationale behind previous labels and recommendations. "
+                    "Your task has exactly two steps and must stop after completing them:\n"
+                    "Step 1: Immediately call the tool 'rag_search_for_reason_agent' once "
+                    "to retrieve relevant dialogue and recommendation history for reasoning.\n"
+                    "Step 2: Using only the tool result, explain the reasoning or justification for the prior outputs. "
+                    "Do not call any other tools, and do not produce any response before the tool result is obtained. "
+                    "End your turn after giving the explanation."
             ),
         )
 
@@ -104,6 +169,48 @@ def main():
             name=f"User_{user}_proxy_agent",
             human_input_mode="NEVER",
             code_execution_config=False,
+        )
+
+        dialogue_history_agent.register_for_llm(
+            name="rag_search_for_dialogue_history_agent",
+            description=(
+                "Retrieve relevant user dialogue history and preference records from the vector database. "
+                "Use it to infer user interests, habits, or contextual labels."
+            ),
+        )(rag_search_for_dialogue_history_agent)
+
+        dialogue_history_agent.register_for_execution(
+            name="rag_search_for_dialogue_history_agent"
+        )(rag_search_for_dialogue_history_agent)
+
+        recommend_agent.register_for_llm(
+            name="rag_search_for_recommend_agent",
+            description=(
+                "Search the vector database for product, item, or knowledge information relevant to the user's query. "
+                "Use it to generate personalized shopping recommendations."
+            ),
+        )(rag_search_for_recommend_agent)
+
+        recommend_agent.register_for_execution(
+            name="rag_search_for_recommend_agent"
+        )(rag_search_for_recommend_agent)
+
+        reason_agent.register_for_llm(
+            name="rag_search_for_reason_agent",
+            description=(
+                "Search the vector database for previous dialogue and recommendation records "
+                "to explain the rationale behind user labels and system recommendations."
+            ),
+        )(rag_search_for_reason_agent)
+
+        reason_agent.register_for_execution(
+            name="rag_search_for_reason_agent"
+        )(rag_search_for_reason_agent)
+
+        user_proxy_agent.register_reply(
+            [autogen.Agent, None],
+            reply_func=make_save_hook(user_proxy_agent.name),
+            config={},
         )
 
         dialogue_history_agent.register_reply(
@@ -124,51 +231,6 @@ def main():
             config={},
         )
 
-        user_proxy_agent.register_reply(
-            [autogen.Agent, None],
-            reply_func=make_save_hook(user_proxy_agent.name),
-            config={},
-        )
-
-        dialogue_history_agent.register_for_llm(
-            name="rag_search_for_dialogue_history_agent",
-            description=(
-                "Retrieve relevant user dialogue history and preference records from the vector database. "
-                "Use it to infer user interests, habits, or contextual labels."
-            ),
-        )(rag_search_for_dialogue_history_agent)
-
-        dialogue_history_agent.register_for_execution(
-            name="rag_search_for_dialogue_history_agent"
-        )(rag_search_for_dialogue_history_agent)
-
-
-        recommend_agent.register_for_llm(
-            name="rag_search_for_recommend_agent",
-            description=(
-                "Search the vector database for product, item, or knowledge information relevant to the user's query. "
-                "Use it to generate personalized shopping recommendations."
-            ),
-        )(rag_search_for_recommend_agent)
-
-        recommend_agent.register_for_execution(
-            name="rag_search_for_recommend_agent"
-        )(rag_search_for_recommend_agent)
-
-
-        reason_agent.register_for_llm(
-            name="rag_search_for_reason_agent",
-            description=(
-                "Search the vector database for previous dialogue and recommendation records "
-                "to explain the rationale behind user labels and system recommendations."
-            ),
-        )(rag_search_for_reason_agent)
-
-        reason_agent.register_for_execution(
-            name="rag_search_for_reason_agent"
-        )(rag_search_for_reason_agent)
-
-
         # output separated by category
         results[user] = []
 
@@ -186,6 +248,7 @@ def main():
 
             manager = GroupChatManager(groupchat=groupchat, llm_config=llm_config)
 
+            save_chat_history(f"[USER_QUESTION_{i}] [{user_proxy_agent.name}] {q}")
             user_proxy_agent.initiate_chat(manager, message=q)
 
             new_msgs = groupchat.messages[:]
