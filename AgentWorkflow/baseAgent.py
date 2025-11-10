@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
 import os
-from helpFunctions import load_all_questions, load_all_users
+from helpFunctions import load_all_users_and_questions
 from datetime import datetime
 from pathlib import Path
 import json
@@ -27,14 +27,11 @@ def main():
 
     # question json file path
     # TODO: need this format of question list
-    json_path = "temp_user_based_question_list.json"
+    json_path = "../questions/All_Beauty_questions_20251110_212053.json"
 
-    all_questions_dict = load_all_questions(json_path)
+    all_questions_dict, all_users_list = load_all_users_and_questions(json_path)
 
-    all_users_list = load_all_users(json_path)
-
-    # TODO: selected_users = all_users_list, select first 2 users for now
-    selected_users = all_users_list[:2]
+    selected_users = all_users_list[:]
     
     # how many questions can run for one user
     per_user_limit = None # run all questions from the user
