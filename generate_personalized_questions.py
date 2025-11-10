@@ -322,8 +322,8 @@ def main(data_file="All_Beauty_top_100_user_data.json", max_users=None):
     # 7. Save results
     # -------------------------------------
     # Extract category from data file name (e.g., "All_Beauty_top_100_user_data.json" -> "All_Beauty")
-    category = os.path.basename(data_file).split("_")[0:2]  # Get first two parts
-    category = "_".join(category) if len(category) > 1 else category[0]
+    filename = os.path.basename(data_file)
+    category = filename.split("_top_")[0]  # Get everything before "_top_"
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     os.makedirs("questions", exist_ok=True)
@@ -354,8 +354,8 @@ if __name__ == "__main__":
 
     # Process each data file
     for data_file in data_files:
-        category = os.path.basename(data_file).split("_")[0:2]
-        category = "_".join(category) if len(category) > 1 else category[0]
+        filename = os.path.basename(data_file)
+        category = filename.split("_top_")[0]  # Get everything before "_top_"
 
         print(f"{'='*60}")
         print(f"Processing category: {category}")
