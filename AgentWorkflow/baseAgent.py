@@ -27,7 +27,7 @@ def main():
 
     # question json file path
     # TODO: need this format of question list
-    json_path = "../questions/All_Beauty_questions_20251110_212053.json"
+    json_path = "../questions/Beauty_and_Personal_Care_questions_20251110_211933.json"
 
     all_questions_dict, all_users_list = load_all_users_and_questions(json_path)
 
