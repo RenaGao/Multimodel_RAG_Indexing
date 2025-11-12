@@ -98,9 +98,8 @@ def main():
     all_questions_dict = load_all_questions(json_path)
 
     all_users_list = load_all_users(json_path)
-
-    # TODO: selected_users = all_users_list, select first 2 users for now
-    selected_users = all_users_list[:2]
+    
+    selected_users = all_users_list[:]
     
     # how many questions can run for one category
     per_user_limit = None # run all questions in the category

@@ -68,8 +68,8 @@ def rag_search_include_image_for_recommend_agent(
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 #  Configuration settings 
 class Config:
-    USER_DATA_PATH = Path("/Users/wangyangwu/Downloads/project/new_rag/amazon_data/processed/All_Beauty_top_100_user_data.json")
-    ITEMREVIEW_PATH = Path("/Users/wangyangwu/Downloads/project/new_rag/amazon_data/processed/All_Beauty_top_100_user_itemReview.json")
+    USER_DATA_PATH = Path("./RagData/All_Beauty_top_100_user_data.json")
+    ITEMREVIEW_PATH = Path("./RagData/All_Beauty_top_100_user_itemReview.json")
     INDEX_DIR = Path("./index")
     CTX_FAISS_PATH = INDEX_DIR / "context_product_index.faiss"
     CTX_IDS_PATH = INDEX_DIR / "context_product_index.ids.json"
