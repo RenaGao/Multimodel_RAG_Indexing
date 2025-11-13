@@ -12,7 +12,7 @@ import faiss
 def rag_search_include_image_for_recommend_agent(
     user_query: str,
     dialogue_summary: str,
-    top_k: int = 5
+    top_k: int
 ) -> Dict[str, Any]:
     """
     Perform RAG search and return products (with image URLs) for the recommender agent.
