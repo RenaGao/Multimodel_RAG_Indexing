@@ -139,6 +139,8 @@ def main():
         if per_user_limit:
             questions = questions[:per_user_limit]
 
+
+        # TODO: summary no label
         dialogue_history_agent = AssistantAgent(
             name=f"Dialogue_History_{user}_agent",
             llm_config=llm_config,
@@ -153,6 +155,7 @@ def main():
             ),
         )
 
+        # TODO: use dialogus history agent's result summary of preference rerank or evaluate product then give recommendation.
         recommend_agent = AssistantAgent(
             name=f"Recommender_{user}_agent",
             llm_config=llm_config,
@@ -167,6 +170,7 @@ def main():
             ),
         )
 
+        # TODO: based on previous dialogue history agent's result + recommendation result + tool's result = reason 
         reason_agent = AssistantAgent(
             name=f"Reasoner_{user}_agent",
             llm_config=llm_config,
