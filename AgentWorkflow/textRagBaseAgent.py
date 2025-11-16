@@ -9,40 +9,57 @@ import json
 from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, rag_search_for_reason_agent
 
 # TODO: can be changed based on Rag need
-def make_save_hook(agent_name: str):
-    """Save the latest inbound event for this agent before it replies."""
+def make_save_hook(agent_name: str, user_name: str):
+    """Save a compact version of the latest inbound event for this agent before it replies."""
     def _hook(recipient, messages, sender, config):
         try:
             if not messages:
                 return False, None
-            
-            msg = messages[-1]  # the newest inbound message for this agent
-            sender_name = getattr(sender, "name", "Unknown")
-            role = msg.get("role", "unknown")
+
+            msg = messages[-1]  
+            role = msg.get("role", "")
             content = msg.get("content", "")
+            tool_calls = msg.get("tool_calls") or msg.get("function_call")
 
-            tool_bits = []
-            if msg.get("tool_calls"):
-                tool_bits.append(f"tool_calls={str(msg['tool_calls'])}")
-            if msg.get("function_call"):
-                tool_bits.append(f"function_call={str(msg['function_call'])}")
             if role in ("tool", "function"):
-                tool_bits.append(f"tool_return(name={msg.get('name')}, content={str(content)[:400]})")
+                return False, None
 
-            history_str = (
-                f"[AGENT:{agent_name}] "
-                f"[FROM:{sender_name}] "
-                f"[ROLE:{role}] "
-                f"[TEXT:{str(content)[:]}] "
-                + (f"[TOOLS:{' | '.join(tool_bits)}]" if tool_bits else "")
-            )
+            if (not content or str(content).strip() in ("", "None")) and tool_calls:
+                return False, None
 
-            save_chat_history(history_str)
+            text = ""
+            if isinstance(content, str):
+                text = content
+
+            elif isinstance(content, list):
+                parts = []
+                for c in content:
+                    if not isinstance(c, dict):
+                        continue
+                    if c.get("type") == "text" and "text" in c:
+                        parts.append(str(c["text"]))
+                    elif "content" in c:
+                        parts.append(str(c["content"]))
+                text = " ".join(parts)
+
+            else:
+                text = str(content)
+
+            text = (text or "").strip()
+            if not text:
+                return False, None 
+            
+            clean = f"[{role}] {text}" if role else text
+
+            save_chat_history(clean, user_name)
+
         except Exception as e:
-            save_chat_history(f"[AGENT:{agent_name}] [SAVE_ERROR:{e}]")
+            save_chat_history(f"[hook_error] {type(e).__name__}: {e}", user_name)
 
         return False, None
+
     return _hook
+
 
 def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent):
     """
@@ -93,7 +110,7 @@ def main():
 
     # question json file path
     # TODO: need this format of question list
-    json_path = "temp_user_based_question_list.json"
+    json_path = Path("/Users/wangyangwu/Downloads/project/merge/Multimodel_RAG_Indexing/questions/All_Beauty_questions_20251110_212053.json")
 
     all_questions_dict = load_all_questions(json_path)
 
@@ -208,25 +225,25 @@ def main():
 
         user_proxy_agent.register_reply(
             [autogen.Agent, None],
-            reply_func=make_save_hook(user_proxy_agent.name),
+            reply_func=make_save_hook(user_proxy_agent.name, user),
             config={},
         )
 
         dialogue_history_agent.register_reply(
             [autogen.Agent, None],
-            reply_func=make_save_hook(dialogue_history_agent.name),
+            reply_func=make_save_hook(dialogue_history_agent.name, user),
             config={},
         )
 
         recommend_agent.register_reply(
             [autogen.Agent, None],
-            reply_func=make_save_hook(recommend_agent.name),
+            reply_func=make_save_hook(recommend_agent.name, user),
             config={},
         )
 
         reason_agent.register_reply(
             [autogen.Agent, None],
-            reply_func=make_save_hook(reason_agent.name),
+            reply_func=make_save_hook(reason_agent.name, user),
             config={},
         )
 
@@ -247,7 +264,7 @@ def main():
 
             manager = GroupChatManager(groupchat=groupchat, llm_config=llm_config)
 
-            save_chat_history(f"[USER_QUESTION_{i}] [{user_proxy_agent.name}] {q}")
+            save_chat_history(f"[USER_QUESTION_{i}] [{user_proxy_agent.name}] {q}", user)
             user_proxy_agent.initiate_chat(manager, message=q)
 
             new_msgs = groupchat.messages[:]
