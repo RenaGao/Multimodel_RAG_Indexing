@@ -12,7 +12,7 @@ import faiss
 def rag_search_include_image_for_recommend_agent(
     user_query: str,
     dialogue_summary: str,
-    top_k: int = 5
+    top_k: int
 ) -> Dict[str, Any]:
     """
     Perform RAG search and return products (with image URLs) for the recommender agent.
@@ -68,8 +68,8 @@ def rag_search_include_image_for_recommend_agent(
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 #  Configuration settings 
 class Config:
-    USER_DATA_PATH = Path("/Users/wangyangwu/Downloads/project/new_rag/amazon_data/processed/All_Beauty_top_100_user_data.json")
-    ITEMREVIEW_PATH = Path("/Users/wangyangwu/Downloads/project/new_rag/amazon_data/processed/All_Beauty_top_100_user_itemReview.json")
+    USER_DATA_PATH = Path("./RagData/All_Beauty_top_100_user_data.json")
+    ITEMREVIEW_PATH = Path("./RagData/All_Beauty_top_100_user_itemReview.json")
     INDEX_DIR = Path("./index")
     CTX_FAISS_PATH = INDEX_DIR / "context_product_index.faiss"
     CTX_IDS_PATH = INDEX_DIR / "context_product_index.ids.json"
@@ -1190,6 +1190,8 @@ def generate_comprehensive_reasoning(user_question: Dict[str, Any],
 
 # Main Agent Functions  
 def rag_search_for_dialogue_history_agent(user_name: str) -> str:
+    # TODO: 1. get user name -> get conversation history -> 1st round can be empty str, let agent give general output
+    # TODO: -> 2nd round start seeing impact
     IndexManager.ensure_index_ready()
     
     chat_history = load_complete_chat_history(user_name)
@@ -1253,6 +1255,7 @@ def rag_search_for_dialogue_history_agent(user_name: str) -> str:
     return natural_response  
 
 def rag_search_for_recommend_agent(user_query: str, user_labels: List[str], top_k: int = 5) -> str:
+    # TODO: 1. make retrieve rule base function separately, plugin whenever we need to use
     Utilities.ensure_loaded()
     Utilities.ensure_embedder()
     IndexManager.ensure_index_ready()
