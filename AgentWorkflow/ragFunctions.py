@@ -236,65 +236,65 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels:
 
 
 # Reason Agent 
-def rag_search_for_reason_agent(user_name: str) -> dict:
-    up = _user_paths(user_name)
-    if not up["last_round"].exists():
-        return {
-            "explanation": "No prior recommendation context found for this user.",
-            "user_query": "",
-            "user_labels": [],
-            "recommendations": [],
-        }
+# def rag_search_for_reason_agent(user_name: str) -> dict:
+#     up = _user_paths(user_name)
+#     if not up["last_round"].exists():
+#         return {
+#             "explanation": "No prior recommendation context found for this user.",
+#             "user_query": "",
+#             "user_labels": [],
+#             "recommendations": [],
+#         }
 
-    data = json.loads(up["last_round"].read_text(encoding="utf-8"))
-    user_query = data.get("user_query", "")
-    labels     = data.get("user_labels", [])
-    recs       = data.get("recommendations", [])
-    hist       = data.get("history_excerpt", [])
-    engine     = data.get("engine", "Sentence-Transformers")
-    dataset_category = data.get("dataset_category", DATASET_CATEGORY)
-    fusion     = data.get("fusion", {})
+#     data = json.loads(up["last_round"].read_text(encoding="utf-8"))
+#     user_query = data.get("user_query", "")
+#     labels     = data.get("user_labels", [])
+#     recs       = data.get("recommendations", [])
+#     hist       = data.get("history_excerpt", [])
+#     engine     = data.get("engine", "Sentence-Transformers")
+#     dataset_category = data.get("dataset_category", DATASET_CATEGORY)
+#     fusion     = data.get("fusion", {})
 
-    label_clause = ", ".join(labels) if labels else "general preferences inferred from history"
-    why_bits = []
-    for r in recs[:5]:
-        parts = [r.get("title", "")]
-        if r.get("brand"):
-            parts.append(f"by {r['brand']}")
-        why_bits.append(" ".join([p for p in parts if p]))
+#     label_clause = ", ".join(labels) if labels else "general preferences inferred from history"
+#     why_bits = []
+#     for r in recs[:5]:
+#         parts = [r.get("title", "")]
+#         if r.get("brand"):
+#             parts.append(f"by {r['brand']}")
+#         why_bits.append(" ".join([p for p in parts if p]))
 
-    explanation = (
-        f"For catalog '{dataset_category}', based on the query \"{user_query}\" and labels ({label_clause}), "
-        f"I retrieved products using a RAG retriever ({engine}) over item reviews. "
-    )
+#     explanation = (
+#         f"For catalog '{dataset_category}', based on the query \"{user_query}\" and labels ({label_clause}), "
+#         f"I retrieved products using a RAG retriever ({engine}) over item reviews. "
+#     )
 
-    review_bits = []
-    for r in recs[:3]:
-        snippet = r.get("review")
-        if snippet:
-            review_bits.append(f"• {snippet}")
+#     review_bits = []
+#     for r in recs[:3]:
+#         snippet = r.get("review")
+#         if snippet:
+#             review_bits.append(f"• {snippet}")
 
-    if review_bits:
-        explanation += "Some supporting user reviews:\n" + "\n".join(review_bits) + " "
+#     if review_bits:
+#         explanation += "Some supporting user reviews:\n" + "\n".join(review_bits) + " "
 
 
-    if fusion.get("user_profile_used"):
-        explanation += (
-            f"I combined similarity to the current query (weight {fusion.get('alpha_query', 0.7)}) "
-            f"with similarity to the user's past purchases and reviews "
-            f"(weight {fusion.get('beta_user_profile', 0.3)}). "
-        )
-    else:
-        explanation += "User profile information was not available, so only query similarity was used. "
+#     if fusion.get("user_profile_used"):
+#         explanation += (
+#             f"I combined similarity to the current query (weight {fusion.get('alpha_query', 0.7)}) "
+#             f"with similarity to the user's past purchases and reviews "
+#             f"(weight {fusion.get('beta_user_profile', 0.3)}). "
+#         )
+#     else:
+#         explanation += "User profile information was not available, so only query similarity was used. "
 
-    if why_bits:
-        explanation += "Top matches: " + "; ".join(why_bits) + ". "
-    if hist:
-        explanation += "Recent dialogue snippets considered: " + " | ".join(hist[:2]) + "."
+#     if why_bits:
+#         explanation += "Top matches: " + "; ".join(why_bits) + ". "
+#     if hist:
+#         explanation += "Recent dialogue snippets considered: " + " | ".join(hist[:2]) + "."
 
-    return {
-        "explanation": explanation,
-        "user_query": user_query,
-        "user_labels": labels,
-        "recommendations": recs,
-    }
+#     return {
+#         "explanation": explanation,
+#         "user_query": user_query,
+#         "user_labels": labels,
+#         "recommendations": recs,
+#     }
