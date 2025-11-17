@@ -40,7 +40,7 @@ def construct_item_search_text(
     all_item_reviews: List[dict],
     max_reviews: int = 20
 ) -> str:
-    # TODO: Add Details!
+    # TODO: Add Details tag!
     """
     Construct text for embedding from product metadata and reviews
     (Copied from fashion_rag_index.py)
@@ -306,6 +306,7 @@ def build_review_embeddings_v2(
     doc_order: List[str],
     embedder
 ) -> np.ndarray:
+    # TODO: Remove target_product review!
     """
     Generate average review embeddings for each item in v2
 

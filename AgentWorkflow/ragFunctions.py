@@ -50,8 +50,7 @@ def _user_paths(user_name: str) -> Dict[str, Path]:
     return {
         "root": udir,
         "user_index": udir / "user_index",
-        "chat_history": udir / "chat_history.jsonl",  # Legacy, deprecated
-        "chat_rounds": udir / "chat_rounds.jsonl",
+        "chat_history": udir / "chat_history.jsonl",
         "round_embeddings": udir / "round_embeddings.pkl",
         "round_metadata": udir / "round_metadata.pkl",
         "last_round": udir / "last_round.json",
@@ -225,7 +224,7 @@ def save_chat_history(chat_history: str, user_name: str) -> bool:
             }
 
             # Save round data
-            with up["chat_rounds"].open("a", encoding="utf-8") as f:
+            with up["chat_history"].open("a", encoding="utf-8") as f:
                 f.write(json.dumps(round_data, ensure_ascii=False) + "\n")
 
             # Generate and save query embedding
@@ -246,8 +245,8 @@ def save_chat_history(chat_history: str, user_name: str) -> bool:
                 content = chat_history
 
             # Load existing rounds to append to the latest one
-            if up["chat_rounds"].exists():
-                all_rounds = list(_iter_jsonl(up["chat_rounds"]))
+            if up["chat_history"].exists():
+                all_rounds = list(_iter_jsonl(up["chat_history"]))
                 if all_rounds:
                     # Update the last round
                     last_round = all_rounds[-1]
@@ -259,7 +258,7 @@ def save_chat_history(chat_history: str, user_name: str) -> bool:
                     last_round["metadata"]["round_status"] = "in_progress"
 
                     # Rewrite the last round (read all, modify last, write all)
-                    with up["chat_rounds"].open("w", encoding="utf-8") as f:
+                    with up["chat_history"].open("w", encoding="utf-8") as f:
                         for i, r in enumerate(all_rounds):
                             if i == len(all_rounds) - 1:
                                 # Write updated last round
@@ -380,8 +379,8 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels:
     up = _user_paths(user_name)
 
     # Update the current round with recommendations
-    if up["chat_rounds"].exists():
-        all_rounds = list(_iter_jsonl(up["chat_rounds"]))
+    if up["chat_history"].exists():
+        all_rounds = list(_iter_jsonl(up["chat_history"]))
         if all_rounds:
             # Update the last round with recommendation data
             last_round = all_rounds[-1]
@@ -392,7 +391,7 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels:
             last_round["metadata"]["recommendations_count"] = len(recs)
 
             # Rewrite all rounds with updated last round
-            with up["chat_rounds"].open("w", encoding="utf-8") as f:
+            with up["chat_history"].open("w", encoding="utf-8") as f:
                 for i, r in enumerate(all_rounds):
                     if i == len(all_rounds) - 1:
                         f.write(json.dumps(last_round, ensure_ascii=False) + "\n")
