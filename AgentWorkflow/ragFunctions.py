@@ -50,7 +50,10 @@ def _user_paths(user_name: str) -> Dict[str, Path]:
     return {
         "root": udir,
         "user_index": udir / "user_index",
-        "chat_history": udir / "chat_history.jsonl",
+        "chat_history": udir / "chat_history.jsonl",  # Legacy, deprecated
+        "chat_rounds": udir / "chat_rounds.jsonl",
+        "round_embeddings": udir / "round_embeddings.pkl",
+        "round_metadata": udir / "round_metadata.pkl",
         "last_round": udir / "last_round.json",
     }
 
@@ -114,16 +117,163 @@ class _Index:
     def doc(self, i: int) -> Dict[str, Any]:
         return self.docs[i]
 
+def _generate_round_embedding(query: str, model: SentenceTransformer) -> np.ndarray:
+    """Generate embedding for a user query."""
+    embedding = model.encode(
+        [query],
+        normalize_embeddings=True,
+        prompt_name="query",
+        batch_size=1
+    )
+    return embedding[0]  # Return single vector
+
+def _load_round_embeddings(user_name: str) -> Tuple[Optional[np.ndarray], Optional[Dict]]:
+    """Load round embeddings and metadata for a user."""
+    up = _user_paths(user_name)
+
+    if not up["round_embeddings"].exists() or not up["round_metadata"].exists():
+        return None, None
+
+    try:
+        with up["round_embeddings"].open("rb") as f:
+            embeddings = pickle.load(f)
+        with up["round_metadata"].open("rb") as f:
+            metadata = pickle.load(f)
+        return embeddings, metadata
+    except Exception as e:
+        print(f"[ERROR] Loading round embeddings: {e}")
+        return None, None
+
+def _append_round_embedding(user_name: str, query: str, round_id: str, round_number: int):
+    """Append a new query embedding to user's embedding matrix."""
+    up = _user_paths(user_name)
+
+    # Load item index model to generate embedding
+    iidx_dir = item_index_dir()
+    iidx = _Index(iidx_dir)
+    iidx.load()
+
+    # Generate embedding
+    query_emb = _generate_round_embedding(query, iidx.model)
+
+    # Load existing embeddings or create new
+    existing_embs, metadata = _load_round_embeddings(user_name)
+
+    if existing_embs is None:
+        # First round
+        new_embs = query_emb.reshape(1, -1)
+        metadata = {
+            "round_ids": [round_id],
+            "round_number_to_idx": {round_number: 0},
+            "embedding_dim": query_emb.shape[0],
+            "model": "Qwen/Qwen3-Embedding-8B",
+            "last_updated": _now()
+        }
+    else:
+        # Append to existing
+        new_embs = np.vstack([existing_embs, query_emb.reshape(1, -1)])
+        metadata["round_ids"].append(round_id)
+        metadata["round_number_to_idx"][round_number] = len(existing_embs)
+        metadata["last_updated"] = _now()
+
+    # Save
+    with up["round_embeddings"].open("wb") as f:
+        pickle.dump(new_embs, f)
+    with up["round_metadata"].open("wb") as f:
+        pickle.dump(metadata, f)
+
 def save_chat_history(chat_history: str, user_name: str) -> bool:
+    """
+    Save chat history with round-based storage and query embeddings.
+    Detects [USER_QUESTION_N] markers to identify new rounds.
+    """
     try:
         up = _user_paths(user_name)
-        rec = {"ts": _now(), "text": chat_history}
-        with up["chat_history"].open("a", encoding="utf-8") as f:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        print(f"[SAVE] chat for user={user_name} -> {up['chat_history']}")
+
+        # Check if this is a user question (new round start)
+        import re
+        user_question_match = re.match(r'\[USER_QUESTION_(\d+)\]\s+\[([^\]]+)\]\s+(.*)', chat_history)
+
+        if user_question_match:
+            # This is a new round starting
+            round_number = int(user_question_match.group(1))
+            agent_name = user_question_match.group(2)
+            user_query = user_question_match.group(3)
+
+            round_id = f"round_{round_number:03d}"
+            timestamp = _now()
+
+            # Initialize round data
+            round_data = {
+                "round_id": round_id,
+                "round_number": round_number,
+                "timestamp": timestamp,
+                "user_query": user_query,
+                "dataset_category": DATASET_CATEGORY,
+                "conversation": [
+                    {
+                        "agent": agent_name,
+                        "role": "user",
+                        "content": user_query,
+                        "timestamp": timestamp
+                    }
+                ],
+                "metadata": {
+                    "query_length": len(user_query),
+                    "round_status": "in_progress"
+                }
+            }
+
+            # Save round data
+            with up["chat_rounds"].open("a", encoding="utf-8") as f:
+                f.write(json.dumps(round_data, ensure_ascii=False) + "\n")
+
+            # Generate and save query embedding
+            _append_round_embedding(user_name, user_query, round_id, round_number)
+
+            print(f"[SAVE] Round {round_number} started for user={user_name}")
+
+        else:
+            # This is a message within an existing round
+            # Parse the message to extract agent and content
+            role_match = re.match(r'\[(\w+)\]\s+(.*)', chat_history)
+
+            if role_match:
+                role = role_match.group(1).lower()
+                content = role_match.group(2)
+            else:
+                role = "assistant"
+                content = chat_history
+
+            # Load existing rounds to append to the latest one
+            if up["chat_rounds"].exists():
+                all_rounds = list(_iter_jsonl(up["chat_rounds"]))
+                if all_rounds:
+                    # Update the last round
+                    last_round = all_rounds[-1]
+                    last_round["conversation"].append({
+                        "role": role,
+                        "content": content,
+                        "timestamp": _now()
+                    })
+                    last_round["metadata"]["round_status"] = "in_progress"
+
+                    # Rewrite the last round (read all, modify last, write all)
+                    with up["chat_rounds"].open("w", encoding="utf-8") as f:
+                        for i, r in enumerate(all_rounds):
+                            if i == len(all_rounds) - 1:
+                                # Write updated last round
+                                f.write(json.dumps(last_round, ensure_ascii=False) + "\n")
+                            else:
+                                # Write unchanged rounds
+                                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+                    print(f"[SAVE] Message added to round {last_round['round_number']} for user={user_name}")
+
         return True
+
     except Exception as e:
-        print("[SAVE ERROR]", e)
+        print(f"[SAVE ERROR] {e}")
         return False
 
 # Dialogue History Agent
