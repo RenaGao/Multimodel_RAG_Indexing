@@ -8,8 +8,8 @@ from pathlib import Path
 TEST_ASIN = "B075FPPBH9"
 
 # File paths
-item_review_file = Path("Amazon_Fashion_top_100_user_itemReview.json")
-user_data_file = Path("Amazon_Fashion_top_100_user_data.json")
+item_review_file = Path("/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/Amazon_Fashion_top_100_user_itemReview.json")
+user_data_file = Path("/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/Amazon_Fashion_top_100_user_data.json")
 
 print(f"="*60)
 print(f"Investigating review count for item: {TEST_ASIN}")
@@ -22,7 +22,7 @@ with open(item_review_file, 'r', encoding='utf-8') as f:
 
 if TEST_ASIN in item_review_data:
     reviews = item_review_data[TEST_ASIN]
-    print(f"   ✓ Found {TEST_ASIN} in item_review_file")
+    print(f"   [OK] Found {TEST_ASIN} in item_review_file")
     print(f"   Type: {type(reviews)}")
     print(f"   Length: {len(reviews)}")
     print(f"   Number of reviews: {len(reviews)}")
@@ -34,7 +34,7 @@ if TEST_ASIN in item_review_data:
         print(f"     - ASIN: {review.get('asin', 'N/A')}")
         print(f"     - Parent ASIN: {review.get('parent_asin', 'N/A')}")
 else:
-    print(f"   ✗ {TEST_ASIN} NOT found in item_review_file")
+    print(f"   [ERROR] {TEST_ASIN} NOT found in item_review_file")
 
 # Load user_data_file
 print(f"\n2. Checking user_data_file...")
