@@ -298,11 +298,14 @@ def main():
     else:
         version_str = args.version
 
-    # Set output directory based on version
+    # Set output directory based on version and model
     if args.output_dir:
         output_dir = Path(args.output_dir)
     else:
-        output_dir = Path(f"./tsne_outputs_{version_str}")
+        if args.model:
+            output_dir = Path(f"./tsne_outputs_{version_str}_{args.model}")
+        else:
+            output_dir = Path(f"./tsne_outputs_{version_str}")
     output_dir.mkdir(exist_ok=True, parents=True)
 
     category_name = args.category or "Amazon_Fashion"
