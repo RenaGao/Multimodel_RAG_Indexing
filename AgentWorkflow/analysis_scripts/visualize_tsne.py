@@ -27,8 +27,6 @@ plt.rcParams['figure.figsize'] = (12, 8)
 BASE_DIR = Path("../storage")
 CATALOG_DIR = BASE_DIR / "vectorstore" / "catalog"
 OUTPUT_DIR = Path("./tsne_outputs")
-OUTPUT_DIR.mkdir(exist_ok=True)
-
 
 def load_embeddings_and_metadata(index_dir: Path):
     """
@@ -267,6 +265,8 @@ def main():
     parser = argparse.ArgumentParser(description="Create t-SNE visualizations for item embeddings")
     parser.add_argument("--category", help="Category name (e.g., Amazon_Fashion)")
     parser.add_argument("--path", help="Direct path to item_index directory")
+    parser.add_argument("--version", choices=["v1", "v2"], default="v2",
+                        help="Version of index to visualize (default: v2)")
     parser.add_argument("--perplexity", type=int, default=30, help="t-SNE perplexity (default: 30)")
     parser.add_argument("--max_iter", type=int, default=1000, help="t-SNE max iterations (default: 1000)")
     parser.add_argument("--output_dir", help="Output directory for plots")
@@ -277,20 +277,32 @@ def main():
     if args.path:
         index_dir = Path(args.path)
     elif args.category:
-        index_dir = CATALOG_DIR / args.category / "item_index"
+        index_dir = CATALOG_DIR / args.category / f"item_index_{args.version}"
     else:
-        print("Error: Please provide either --category or --path")
-        return
+        # Use default path based on version
+        base_path = "/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Multimodel_RAG_Indexing/AgentWorkflow/storage/vectorstore/catalog/Amazon_Fashion"
+        index_dir = Path(base_path) / f"item_index_{args.version}"
 
     if not index_dir.exists():
         print(f"Error: Index directory not found: {index_dir}")
         return
 
-    # Set output directory
-    output_dir = Path(args.output_dir) if args.output_dir else OUTPUT_DIR
+    # Detect version from path
+    if "item_index_v1" in str(index_dir):
+        version_str = "v1"
+    elif "item_index_v2" in str(index_dir):
+        version_str = "v2"
+    else:
+        version_str = args.version
+
+    # Set output directory based on version
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    else:
+        output_dir = OUTPUT_DIR / version_str
     output_dir.mkdir(exist_ok=True, parents=True)
 
-    category_name = args.category or index_dir.parent.name
+    category_name = args.category or "Amazon_Fashion"
 
     print(f"\n{'='*60}")
     print(f"t-SNE Visualization for Category: {category_name}")
@@ -299,41 +311,101 @@ def main():
     # Load data
     embeddings, docs, texts = load_embeddings_and_metadata(index_dir)
 
-    # Apply t-SNE
+    # Apply t-SNE for metadata embeddings
+    print(f"\n--- Processing Metadata Embeddings (matrix.pkl) ---")
     coords_2d = apply_tsne(embeddings, perplexity=args.perplexity, max_iter=args.max_iter)
 
-    print(f"\nGenerating visualizations...")
+    print(f"\nGenerating visualizations for metadata embeddings...")
 
-    # Create various plots
+    # File prefix for metadata embeddings
+    if version_str == "v2":
+        prefix = f"{category_name}_metadata"
+    else:
+        prefix = f"{category_name}"
+
+    # Create various plots for metadata embeddings
     plot_basic_tsne(
         coords_2d,
-        output_dir / f"{category_name}_tsne_basic.png"
+        output_dir / f"{prefix}_tsne_basic.png"
     )
 
     plot_tsne_by_rating(
         coords_2d,
         docs,
-        output_dir / f"{category_name}_tsne_by_rating.png"
+        output_dir / f"{prefix}_tsne_by_rating.png"
     )
 
     plot_tsne_by_brand(
         coords_2d,
         docs,
-        output_dir / f"{category_name}_tsne_by_brand.png",
+        output_dir / f"{prefix}_tsne_by_brand.png",
         top_n=10
     )
 
     plot_tsne_density(
         coords_2d,
-        output_dir / f"{category_name}_tsne_density.png"
+        output_dir / f"{prefix}_tsne_density.png"
     )
 
     # Save coordinates
     save_tsne_coordinates(
         coords_2d,
         docs,
-        output_dir / f"{category_name}_tsne_coordinates.json"
+        output_dir / f"{prefix}_tsne_coordinates.json"
     )
+
+    # Check for review_matrix.pkl and process if exists
+    review_matrix_path = index_dir / "review_matrix.pkl"
+    if review_matrix_path.exists():
+        print(f"\n{'='*60}")
+        print(f"Found review_matrix.pkl - Processing Review Embeddings")
+        print(f"{'='*60}\n")
+
+        # Load review embeddings
+        print(f"Loading review embeddings from {review_matrix_path}")
+        with review_matrix_path.open("rb") as f:
+            review_embeddings = pickle.load(f)
+        print(f"Loaded review embeddings: {review_embeddings.shape}")
+
+        # Apply t-SNE for review embeddings
+        print(f"\n--- Processing Review Embeddings (review_matrix.pkl) ---")
+        review_coords_2d = apply_tsne(review_embeddings, perplexity=args.perplexity, max_iter=args.max_iter)
+
+        print(f"\nGenerating visualizations for review embeddings...")
+
+        # File prefix for review embeddings
+        review_prefix = f"{category_name}_review"
+
+        # Create various plots for review embeddings
+        plot_basic_tsne(
+            review_coords_2d,
+            output_dir / f"{review_prefix}_tsne_basic.png"
+        )
+
+        plot_tsne_by_rating(
+            review_coords_2d,
+            docs,
+            output_dir / f"{review_prefix}_tsne_by_rating.png"
+        )
+
+        plot_tsne_by_brand(
+            review_coords_2d,
+            docs,
+            output_dir / f"{review_prefix}_tsne_by_brand.png",
+            top_n=10
+        )
+
+        plot_tsne_density(
+            review_coords_2d,
+            output_dir / f"{review_prefix}_tsne_density.png"
+        )
+
+        # Save coordinates
+        save_tsne_coordinates(
+            review_coords_2d,
+            docs,
+            output_dir / f"{review_prefix}_tsne_coordinates.json"
+        )
 
     print(f"\n{'='*60}")
     print(f"All visualizations saved to: {output_dir}")

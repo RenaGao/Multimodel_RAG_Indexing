@@ -287,6 +287,51 @@ def normalize_item_docs_from_itemReview_v1(
 
     return docs
 
+def build_review_embeddings_v2(
+    item_review_data: dict,
+    doc_order: List[str],
+    embedder
+) -> np.ndarray:
+    """
+    Generate average review embeddings for each item in v2
+
+    Args:
+        item_review_data: dict with structure {parent_asin: [review_list]}
+        doc_order: List of parent_asins in the same order as docs
+        embedder: Embedder instance
+
+    Returns:
+        numpy array: Each row is the average embedding of all reviews for that item
+    """
+    review_embeddings = []
+
+    for parent_asin in doc_order:
+        reviews = item_review_data.get(parent_asin, [])
+
+        # Collect all review texts
+        review_texts = []
+        for rv in reviews:
+            if not isinstance(rv, dict):
+                continue
+            title = rv.get('title', '')
+            text = rv.get('text', '')
+            combined = f"{title} {text}".strip()
+            if combined:
+                review_texts.append(combined)
+
+        if review_texts:
+            # Generate embeddings for all reviews and take average
+            embs = embedder.encode(review_texts)
+            avg_emb = np.mean(embs, axis=0)
+            review_embeddings.append(avg_emb)
+        else:
+            # No reviews: use zero vector
+            # Get dimension from embedder
+            dim = embedder.model.get_sentence_embedding_dimension()
+            review_embeddings.append(np.zeros(dim))
+
+    return np.array(review_embeddings, dtype=np.float32)
+
 def normalize_item_docs_from_itemReview_v2(
     item_review_data: dict,
     item_meta_map: Dict[str, dict],
@@ -412,7 +457,16 @@ def build_item_index_for_category(category: str, version: str = "v1"):
 
     texts = [d["title"] + " " + d["text"] for d in docs]
 
-    emb = Embedder().encode(texts)
+    embedder_instance = Embedder()
+    emb = embedder_instance.encode(texts)
+
+    # For v2: also generate review embeddings
+    if version == "v2":
+        print(f"[INFO] Generating review embeddings for v2...")
+        # Get doc order (parent_asins)
+        doc_order = [d["item_id"] for d in docs]
+        review_emb = build_review_embeddings_v2(item_review_data, doc_order, embedder_instance)
+        print(f"[INFO] Generated review embeddings: {review_emb.shape}")
 
     meta_path = item_dir / "meta.pkl"
     matrix_path = item_dir / "matrix.pkl"
@@ -424,6 +478,13 @@ def build_item_index_for_category(category: str, version: str = "v1"):
 
     with matrix_path.open("wb") as f:
         pickle.dump(emb, f)
+
+    # For v2: save review embeddings separately
+    if version == "v2":
+        review_matrix_path = item_dir / "review_matrix.pkl"
+        with review_matrix_path.open("wb") as f:
+            pickle.dump(review_emb, f)
+        print(f"[SAVE] review embeddings -> {review_matrix_path}")
 
     with embedder_path.open("wb") as f:
         pickle.dump({"kind": "sbert", "model": "all-MiniLM-L6-v2"}, f)
