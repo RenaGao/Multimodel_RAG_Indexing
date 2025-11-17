@@ -60,7 +60,6 @@ def make_save_hook(agent_name: str, user_name: str):
 
     return _hook
 
-
 def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent):
     """
     Flow:
@@ -113,10 +112,7 @@ def main():
 
     all_questions_dict = load_all_questions(json_path)
 
-    print(all_questions_dict)
-
     all_users_list = load_all_users(json_path)
-    
     selected_users = all_users_list[:]
     
     # how many questions can run for one category
@@ -125,7 +121,7 @@ def main():
     # store output for json format
     results = {}
 
-    # replace Qwen3 VL 8B Instruct
+    # Qwen3 VL 8B Instruct
     llm_config = {
             "config_list": [{
                 "model": "qwen/qwen3-vl-8b-instruct",
@@ -154,33 +150,57 @@ def main():
             ),
         )
 
-        # TODO: use dialogus history agent's result summary of preference rerank or evaluate product then give recommendation.
         recommend_agent = AssistantAgent(
             name=f"Recommender_{user}_agent",
             llm_config=llm_config,
             system_message=(
-                    "You are a Shopping Recommender Agent. "
-                    "Your task has exactly two steps and must stop after completing them:\n"
-                    "Step 1: Immediately call the tool 'rag_search_for_recommend_agent' once "
-                    "to retrieve recommendation candidates relevant to the user's query and labels.\n"
-                    "Step 2: Based on the tool result, generate the product recommendation(s) for the user. "
-                    "Do not call any other tools, and do not respond before the tool result is returned. "
-                    "End your turn after providing the recommendation."
+                "You are a Shopping Recommender Agent.\n"
+                "Your task has exactly THREE steps and must stop after completing them.\n\n"
+
+                "Step 1: Immediately and automatically call the tool 'rag_search_for_recommend_agent' ONCE. "
+                "Use the user's query exactly as provided.\n"
+
+                "STEP 2: Based on the tool result, generate the product recommendation(s) for the user. "
+                "Do NOT call any additional tools.\n"
+
+                f"STEP 3: Use the Dialogue_History_{user}_agent's final output included earlier in the conversation "
+                "to FILTER or RERANK the recommendations.\n"
+
+                "FINAL OUTPUT REQUIREMENTS:\n"
+                "1. Provide the final, reranked recommendation list.\n"
+                f"2. Use ONLY information from: (1) the RAG tool result, and (2) the Dialogue_History_{user}_agent summary.\n"
+                "End your turn immediately after producing the recommendation output."
             ),
         )
 
-        # TODO: based on previous dialogue history agent's result + recommendation result + tool's result = reason 
         reason_agent = AssistantAgent(
             name=f"Reasoner_{user}_agent",
             llm_config=llm_config,
             system_message=(
-                    "You are a Reasoning Agent that provides the rationale behind previous recommendations. "
-                    "Your task has exactly two steps and must stop after completing them:\n"
-                    "Step 1: Immediately call the tool 'rag_search_for_reason_agent' once "
-                    "to retrieve relevant dialogue and recommendation history for reasoning.\n"
-                    "Step 2: Using only the tool result, explain the reasoning or justification for the prior outputs. "
-                    "Do not call any other tools, and do not produce any response before the tool result is obtained. "
-                    "End your turn after giving the explanation."
+                "You are a Reasoning Agent. "
+                "Your task is to explain WHY the product recommendations were generated.\n"
+
+                "You are provided with the FULL message history of the groupchat, "
+                "which may contain many previous rounds.\n\n"
+
+                "IMPORTANT RULES:\n"
+                "1. Only consider messages that belong to the **current question round**.\n"
+                "2. Ignore ALL messages that appear before this boundary.\n\n"
+
+                "Within the current round, extract exactly these fields:\n"
+                "- user_query:   from the first User_*_proxy_agent message after the boundary\n"
+                "- dialogue_tool_result:    from the tool message of Dialogue_History_*_agent\n"
+                f"- dialogue_summary:         from the assistant output of Dialogue_History_{user}_agent\n"
+                "- recommendation_tool_result:   from the tool message of Recommender_*_agent\n"
+                f"- final_recommendation:         from the assistant output of Recommender_{user}_agent\n\n"
+
+                "FINAL OUTPUT REQUIREMENTS:\n"
+                "1. Read ONLY these extracted fields from this round.\n"
+                "2. Explain clearly and concisely WHY the recommendation was produced.\n"
+                "3. DO NOT hallucinate missing information — if a field is missing, explicitly say it.\n"
+                "4. DO NOT use or reference any information from previous rounds.\n\n"
+                
+                "End your turn after producing the explanation."
             ),
         )
 
@@ -194,7 +214,7 @@ def main():
             name="rag_search_for_dialogue_history_agent",
             description=(
                 "Retrieve relevant user dialogue history and preference records from the vector database. "
-                "Use it to infer user interests, habits, or contextual labels."
+                "Use it to infer user interests, habits, or preference."
             ),
         )(rag_search_for_dialogue_history_agent)
 
@@ -258,8 +278,7 @@ def main():
             save_chat_history(f"[USER_QUESTION_{i}] [{user_proxy_agent.name}] {q}", user)
             user_proxy_agent.initiate_chat(manager, message=q)
 
-            new_msgs = groupchat.messages[:]
-            user_history.extend(new_msgs)
+            user_history.extend(groupchat.messages[len(user_history)])
 
         results[user] = user_history
             
