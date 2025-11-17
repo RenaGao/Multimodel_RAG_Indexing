@@ -7,10 +7,15 @@ from typing import Any, Dict, List, Tuple, Optional
 from datetime import datetime
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from buildRag import build_user_index_for 
+from buildRag import build_user_index_for
 import torch
 import os
+import threading
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# Global model cache with thread-safe access
+_MODEL_CACHE = {}
+_MODEL_CACHE_LOCK = threading.Lock()
 
 BASE_DIR   = Path("./storage")
 VSTORE_DIR = BASE_DIR / "vectorstore"
@@ -94,8 +99,23 @@ class _Index:
         d = pickle.load(self.meta.open("rb"))
         self.docs = d["docs"]
         self.texts = d["texts"]
+
+        # Use cached model if available
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = SentenceTransformer("Qwen/Qwen3-Embedding-8B", device=device)
+        model_key = f"Qwen/Qwen3-Embedding-8B:{device}"
+
+        with _MODEL_CACHE_LOCK:
+            if model_key not in _MODEL_CACHE:
+                print(f"[LOAD] Loading new SentenceTransformer model: {model_key}")
+                _MODEL_CACHE[model_key] = SentenceTransformer(
+                    "Qwen/Qwen3-Embedding-8B",
+                    device=device
+                )
+                print(f"[LOAD] Model loaded and cached successfully")
+            else:
+                print(f"[LOAD] Reusing cached SentenceTransformer model: {model_key}")
+
+        self.model = _MODEL_CACHE[model_key]
         self.matrix = pickle.load(self.mat.open("rb"))
 
         # Load review matrix if available (v2 indices)
@@ -287,13 +307,20 @@ def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = N
     Returns:
         dict with relative_rounds list
     """
+    # Debug: Print received current_query
+    print(f"[DEBUG] rag_search_for_dialogue_history_agent called")
+    print(f"[DEBUG]   user_name: {user_name}")
+    print(f"[DEBUG]   current_query: {current_query}")
+
     up = _user_paths(user_name)
 
     # Load historical rounds
     all_rounds = list(_iter_jsonl(up["chat_history"]))
+    print(f"[DEBUG] Found {len(all_rounds)} historical rounds")
 
     if not all_rounds:
         # No history
+        print(f"[DEBUG] No history found, returning empty")
         return {
             "user_name": user_name,
             "relative_rounds": []
@@ -304,6 +331,7 @@ def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = N
 
     if round_embs is None or current_query is None:
         # No embeddings or no query: return empty
+        print(f"[DEBUG] No embeddings or no query (round_embs={round_embs is not None}, current_query={current_query is not None}), returning empty")
         return {
             "user_name": user_name,
             "relative_rounds": []
@@ -328,10 +356,14 @@ def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = N
     # Build result
     relative_rounds = []
     for idx in top_indices:
+        round_data = all_rounds[idx]
+        similarity_score = float(sims[idx])
         relative_rounds.append({
-            "round_data": all_rounds[idx],
-            "similarity_score": float(sims[idx])
+            "round_data": round_data,
+            "similarity_score": similarity_score
         })
+        print(f"[DEBUG] Top similar round: round_number={round_data.get('round_number')}, "
+              f"query='{round_data.get('user_query', '')[:50]}...', similarity={similarity_score:.4f}")
 
     return {
         "user_name": user_name,
