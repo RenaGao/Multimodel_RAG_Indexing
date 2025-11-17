@@ -266,6 +266,8 @@ def main():
     parser.add_argument("--path", help="Direct path to item_index directory")
     parser.add_argument("--version", choices=["v1", "v2"], default="v2",
                         help="Version of index to visualize (default: v2)")
+    parser.add_argument("--model", default="qwen3",
+                        help="Model suffix (e.g., 'qwen3' for _qwen3, '' for no suffix) (default: qwen3)")
     parser.add_argument("--perplexity", type=int, default=30, help="t-SNE perplexity (default: 30)")
     parser.add_argument("--max_iter", type=int, default=1000, help="t-SNE max iterations (default: 1000)")
     parser.add_argument("--output_dir", help="Output directory for plots")
@@ -276,11 +278,13 @@ def main():
     if args.path:
         index_dir = Path(args.path)
     elif args.category:
-        index_dir = CATALOG_DIR / args.category / f"item_index_{args.version}_qwen3"
+        model_suffix = f"_{args.model}" if args.model else ""
+        index_dir = CATALOG_DIR / args.category / f"item_index_{args.version}{model_suffix}"
     else:
         # Use default path based on version
         base_path = "/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Multimodel_RAG_Indexing/AgentWorkflow/storage/vectorstore/catalog/Amazon_Fashion"
-        index_dir = Path(base_path) / f"item_index_{args.version}_qwen3"
+        model_suffix = f"_{args.model}" if args.model else ""
+        index_dir = Path(base_path) / f"item_index_{args.version}{model_suffix}"
 
     if not index_dir.exists():
         print(f"Error: Index directory not found: {index_dir}")
