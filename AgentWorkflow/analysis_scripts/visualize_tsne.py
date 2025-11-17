@@ -266,8 +266,8 @@ def main():
     parser.add_argument("--path", help="Direct path to item_index directory")
     parser.add_argument("--version", choices=["v1", "v2"], default="v2",
                         help="Version of index to visualize (default: v2)")
-    parser.add_argument("--model", default="qwen3",
-                        help="Model suffix (e.g., 'qwen3' for _qwen3, '' for no suffix) (default: qwen3)")
+    parser.add_argument("--model", default="",
+                        help="Model suffix (e.g., 'qwen3' for _qwen3, '' for no suffix/default model) (default: '')")
     parser.add_argument("--perplexity", type=int, default=30, help="t-SNE perplexity (default: 30)")
     parser.add_argument("--max_iter", type=int, default=1000, help="t-SNE max iterations (default: 1000)")
     parser.add_argument("--output_dir", help="Output directory for plots")
