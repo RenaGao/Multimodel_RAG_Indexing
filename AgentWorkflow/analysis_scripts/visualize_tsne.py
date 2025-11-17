@@ -276,11 +276,11 @@ def main():
     if args.path:
         index_dir = Path(args.path)
     elif args.category:
-        index_dir = CATALOG_DIR / args.category / f"item_index_{args.version}"
+        index_dir = CATALOG_DIR / args.category / f"item_index_{args.version}_qwen3"
     else:
         # Use default path based on version
         base_path = "/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Multimodel_RAG_Indexing/AgentWorkflow/storage/vectorstore/catalog/Amazon_Fashion"
-        index_dir = Path(base_path) / f"item_index_{args.version}"
+        index_dir = Path(base_path) / f"item_index_{args.version}_qwen3"
 
     if not index_dir.exists():
         print(f"Error: Index directory not found: {index_dir}")

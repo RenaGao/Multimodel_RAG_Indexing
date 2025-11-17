@@ -7,6 +7,7 @@ import re
 import argparse
 import numpy as np
 from sentence_transformers import SentenceTransformer
+from tqdm import tqdm
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -198,11 +199,11 @@ def _hash_bytes(b: bytes) -> str:
 
 class Embedder:
     def __init__(self):
-        print("[Embedder] Loading SentenceTransformer: all-MiniLM-L6-v2")
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+        print("[Embedder] Loading SentenceTransformer: Qwen/Qwen3-Embedding-8B")
+        self.model = SentenceTransformer("Qwen/Qwen3-Embedding-8B")
 
     def encode(self, texts: List[str]) -> np.ndarray:
-        return self.model.encode(texts, normalize_embeddings=True)
+        return self.model.encode(texts, normalize_embeddings=True, prompt_name="document")
 
 def normalize_item_docs_from_itemReview_v1(
     all_users: Any,
@@ -217,11 +218,11 @@ def normalize_item_docs_from_itemReview_v1(
         return docs
 
     if isinstance(all_users, dict):
-        user_items = all_users.items()
+        user_items = list(all_users.items())
     else:
-        user_items = enumerate(all_users)
+        user_items = list(enumerate(all_users))
 
-    for user_id, blocks in user_items:
+    for user_id, blocks in tqdm(user_items, desc="Processing users (v1)"):
         if not isinstance(blocks, list):
             continue
 
@@ -305,7 +306,7 @@ def build_review_embeddings_v2(
     """
     review_embeddings = []
 
-    for parent_asin in doc_order:
+    for parent_asin in tqdm(doc_order, desc="Building review embeddings"):
         reviews = item_review_data.get(parent_asin, [])
 
         # Collect all review texts
@@ -351,7 +352,7 @@ def normalize_item_docs_from_itemReview_v2(
     """
     docs: List[Dict[str, Any]] = []
 
-    for parent_asin, reviews in item_review_data.items():
+    for parent_asin, reviews in tqdm(item_review_data.items(), desc="Processing items (v2)"):
         if not isinstance(reviews, list) or len(reviews) == 0:
             continue
 
@@ -402,11 +403,12 @@ def build_item_index_for_category(category: str, version: str = "v1"):
                  v1: One document per review (includes review text)
                  v2: One document per item (only product metadata, no reviews)
     """
-    # Create version-specific directory
-    item_dir = CATALOG_DIR / category / f"item_index_{version}"
+    # Create version and model-specific directory
+    model_suffix = "qwen3"
+    item_dir = CATALOG_DIR / category / f"item_index_{version}_{model_suffix}"
     item_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n[INFO] Building index with version: {version}")
+    print(f"\n[INFO] Building index with version: {version}, model: {model_suffix}")
     print(f"[INFO] Output directory: {item_dir}")
 
     # Load data files
@@ -487,7 +489,7 @@ def build_item_index_for_category(category: str, version: str = "v1"):
         print(f"[SAVE] review embeddings -> {review_matrix_path}")
 
     with embedder_path.open("wb") as f:
-        pickle.dump({"kind": "sbert", "model": "all-MiniLM-L6-v2"}, f)
+        pickle.dump({"kind": "sbert", "model": "Qwen/Qwen3-Embedding-8B", "dimension": 4096}, f)
 
     print(f"[SAVE] item index -> {item_dir}")
 
