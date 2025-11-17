@@ -8,6 +8,7 @@ from datetime import datetime
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from buildRag import build_user_index_for 
+import torch
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -16,13 +17,13 @@ VSTORE_DIR = BASE_DIR / "vectorstore"
 CATALOG_DIR = VSTORE_DIR / "catalog"
 USERS_DIR   = VSTORE_DIR / "users"
 
-DATASET_CATEGORY = "All_Beauty"
+DATASET_CATEGORY = "Amazon_Fashion"
 
 for p in [VSTORE_DIR, CATALOG_DIR, USERS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 def item_index_dir() -> Path:
-    return CATALOG_DIR / DATASET_CATEGORY / "item_index"
+    return CATALOG_DIR / DATASET_CATEGORY / "item_index_v2_qwen3"
 
 def _now() -> str:
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
@@ -74,10 +75,12 @@ class _Index:
         self.dir = index_dir
         self.meta = index_dir / "meta.pkl"
         self.mat  = index_dir / "matrix.pkl"
+        self.review_mat = index_dir / "review_matrix.pkl"
         self.docs: List[Dict[str, Any]] = []
         self.texts: List[str] = []
         self.model: Optional[SentenceTransformer] = None
         self.matrix: Optional[np.ndarray] = None
+        self.review_matrix: Optional[np.ndarray] = None
 
     def exists(self) -> bool:
         return self.meta.exists() and self.mat.exists()
@@ -89,9 +92,16 @@ class _Index:
         d = pickle.load(self.meta.open("rb"))
         self.docs = d["docs"]
         self.texts = d["texts"]
-
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model = SentenceTransformer("Qwen/Qwen3-Embedding-8B", device=device)
         self.matrix = pickle.load(self.mat.open("rb"))
+
+        # Load review matrix if available (v2 indices)
+        if self.review_mat.exists():
+            self.review_matrix = pickle.load(self.review_mat.open("rb"))
+            print(f"[LOAD] Review matrix loaded: {self.review_matrix.shape}")
+        else:
+            print(f"[INFO] No review_matrix.pkl found - using metadata embeddings only")
 
     def search(self, query: str, k: int = 10) -> List[Tuple[int, float]]:
         if not query.strip() or self.matrix is None:
@@ -172,18 +182,27 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels:
 
     # 2) construct query embedding
     q_text = f"{user_query or ''} {' '.join(user_labels or [])}".strip()
-    q_emb = iidx.model.encode([q_text], normalize_embeddings=True)  
-    sim_query = _cosine(q_emb, iidx.matrix).ravel()                
+    q_emb = iidx.model.encode([q_text], normalize_embeddings=True)
 
-    user_emb = _load_user_profile_embedding(user_name)
-    sim_user = _cosine(user_emb, iidx.matrix).ravel() 
-    alpha = 0.7  
-    score_final = alpha * sim_query + (1.0 - alpha) * sim_user
-    fusion_info = {
-        "alpha_query": alpha,
-        "beta_user_profile": 1.0 - alpha,
-        "user_profile_used": True,
-    }
+    # 3) compute similarities with metadata and review embeddings
+    sim_metadata = _cosine(q_emb, iidx.matrix).ravel()
+
+    if iidx.review_matrix is not None:
+        # Dual fusion: 50% metadata + 50% review
+        sim_review = _cosine(q_emb, iidx.review_matrix).ravel()
+        score_final = 0.5 * sim_metadata + 0.5 * sim_review
+        fusion_info = {
+            "alpha_metadata": 0.5,
+            "beta_review": 0.5,
+            "review_embeddings_used": True,
+        }
+    else:
+        # Fallback: metadata only
+        score_final = sim_metadata
+        fusion_info = {
+            "alpha_metadata": 1.0,
+            "review_embeddings_used": False,
+        }
 
     order = score_final.argsort()[::-1]
     candidates: List[Dict[str, Any]] = []
@@ -222,7 +241,7 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels:
         "user_labels": user_labels,
         "recommendations": recs,
         "history_excerpt": history_excerpt,
-        "engine": "Sentence-Transformers (all-MiniLM-L6-v2)",
+        "engine": "Sentence-Transformers (Qwen3-Embedding-8B)",
         "fusion": fusion_info,
     }
     with up["last_round"].open("w", encoding="utf-8") as f:

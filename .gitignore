@@ -11,3 +11,4 @@ training_metrics.json
 .venv
 __pycache__
 ./DS_Store
+/AgentWorkflow/storage
