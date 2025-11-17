@@ -141,6 +141,12 @@ def build_item_index_for_category(category: str):
         print(f"[WARN] No docs built for category={category}")
         return
 
+    # Save normalized docs as JSON
+    normalized_docs_path = item_dir / "normalized_docs.json"
+    with normalized_docs_path.open("w", encoding="utf-8") as f:
+        json.dump(docs, f, ensure_ascii=False, indent=2)
+    print(f"[SAVE] normalized docs -> {normalized_docs_path}")
+
     texts = [d["title"] + " " + d["text"] for d in docs]
 
     emb = Embedder().encode(texts)
