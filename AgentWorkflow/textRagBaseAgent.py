@@ -266,7 +266,7 @@ def main():
         user_history = []
 
         for i, q in enumerate(questions, start=1):
-            if i == 1:
+            if i == 2:
                 break
             groupchat = GroupChat(
                 agents=[user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent],
