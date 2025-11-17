@@ -316,11 +316,16 @@ def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = N
 
     # Load historical rounds
     all_rounds = list(_iter_jsonl(up["chat_history"]))
-    print(f"[DEBUG] Found {len(all_rounds)} historical rounds")
+    print(f"[DEBUG] Found {len(all_rounds)} total rounds")
+
+    # Exclude the last round (current round being processed)
+    if len(all_rounds) > 0:
+        all_rounds = all_rounds[:-1]
+        print(f"[DEBUG] Excluding current round, searching in {len(all_rounds)} historical rounds")
 
     if not all_rounds:
-        # No history
-        print(f"[DEBUG] No history found, returning empty")
+        # No history (or only current round)
+        print(f"[DEBUG] No historical rounds to search, returning empty")
         return {
             "user_name": user_name,
             "relative_rounds": []
@@ -328,6 +333,11 @@ def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = N
 
     # Load round embeddings
     round_embs, metadata = _load_round_embeddings(user_name)
+
+    # Also exclude the last embedding (current round's embedding)
+    if round_embs is not None and round_embs.shape[0] > 0:
+        round_embs = round_embs[:-1]
+        print(f"[DEBUG] Using {round_embs.shape[0]} historical embeddings for search")
 
     if round_embs is None or current_query is None:
         # No embeddings or no query: return empty
