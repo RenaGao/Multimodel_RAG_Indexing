@@ -59,6 +59,7 @@ def _user_paths(user_name: str) -> Dict[str, Path]:
         "round_embeddings": udir / "round_embeddings.pkl",
         "round_metadata": udir / "round_metadata.pkl",
         "last_round": udir / "last_round.json",
+        "sampled_reviews": udir / "sampled_reviews.json",
     }
 
 def _iter_jsonl(path: Path):
@@ -68,6 +69,122 @@ def _iter_jsonl(path: Path):
         for line in f:
             line = line.strip()
             yield json.loads(line)
+
+def _sample_user_reviews(user_name: str, num_reviews: int = 5) -> Optional[Dict]:
+    """
+    Sample random reviews for a user from Amazon_Fashion_top_100_user_data.json.
+
+    Args:
+        user_name: User identifier
+        num_reviews: Number of reviews to sample (default: 5)
+
+    Returns:
+        Dict with sampled review data or None if user not found
+    """
+    # Path to user data file (in project root)
+    user_data_path = Path("../../Amazon_Fashion_top_100_user_data.json")
+
+    if not user_data_path.exists():
+        print(f"[SAMPLE_REVIEWS] User data file not found: {user_data_path}")
+        return None
+
+    try:
+        # Load user data
+        with user_data_path.open("r", encoding="utf-8") as f:
+            user_data = json.load(f)
+
+        if user_name not in user_data:
+            print(f"[SAMPLE_REVIEWS] User {user_name} not found in user data")
+            return None
+
+        # Extract all reviews for this user
+        all_reviews = []
+        user_items = user_data[user_name]
+
+        for item_tuple in user_items:
+            if not isinstance(item_tuple, list) or len(item_tuple) < 2:
+                continue
+
+            product_meta = item_tuple[0]
+            review_list = item_tuple[1]
+
+            # Add product context to each review
+            for review in review_list:
+                enriched_review = {
+                    "review_text": review.get("text", ""),
+                    "rating": review.get("rating"),
+                    "title": review.get("title", ""),
+                    "product_title": product_meta.get("title", ""),
+                    "product_brand": product_meta.get("store", ""),
+                    "product_price": product_meta.get("price"),
+                    "timestamp": review.get("timestamp", ""),
+                }
+                all_reviews.append(enriched_review)
+
+        if not all_reviews:
+            print(f"[SAMPLE_REVIEWS] No reviews found for user {user_name}")
+            return None
+
+        # Sample reviews (with reproducible random seed)
+        import random
+        random.seed(42)
+        sampled = random.sample(all_reviews, min(num_reviews, len(all_reviews)))
+
+        result = {
+            "user_id": user_name,
+            "sampled_at": _now(),
+            "num_reviews": len(sampled),
+            "total_available_reviews": len(all_reviews),
+            "reviews": sampled
+        }
+
+        print(f"[SAMPLE_REVIEWS] Sampled {len(sampled)} reviews for user {user_name}")
+        return result
+
+    except Exception as e:
+        print(f"[SAMPLE_REVIEWS ERROR] {e}")
+        return None
+
+def _load_sampled_reviews(user_name: str) -> Optional[Dict]:
+    """
+    Load previously sampled reviews for a user.
+
+    Args:
+        user_name: User identifier
+
+    Returns:
+        Dict with sampled review data or None if not found
+    """
+    up = _user_paths(user_name)
+
+    if not up["sampled_reviews"].exists():
+        return None
+
+    try:
+        with up["sampled_reviews"].open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        print(f"[LOAD_REVIEWS] Loaded {data.get('num_reviews', 0)} sampled reviews for user {user_name}")
+        return data
+    except Exception as e:
+        print(f"[LOAD_REVIEWS ERROR] {e}")
+        return None
+
+def _save_sampled_reviews(user_name: str, sampled_data: Dict):
+    """
+    Save sampled reviews for a user.
+
+    Args:
+        user_name: User identifier
+        sampled_data: Dict containing sampled review data
+    """
+    up = _user_paths(user_name)
+
+    try:
+        with up["sampled_reviews"].open("w", encoding="utf-8") as f:
+            json.dump(sampled_data, f, ensure_ascii=False, indent=2)
+        print(f"[SAVE_REVIEWS] Saved {sampled_data.get('num_reviews', 0)} sampled reviews for user {user_name}")
+    except Exception as e:
+        print(f"[SAVE_REVIEWS ERROR] {e}")
 
 def _cosine(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     a = np.asarray(a, dtype=np.float64)
@@ -398,7 +515,7 @@ def _load_user_profile_embedding(user_name: str) -> Optional[np.ndarray]:
     return user_emb
 
 
-# Recommend Agent 
+# Recommend Agent
 def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels: List[str], top_k: int) -> dict:
     # 1) loading Item RAG
     iidx_dir = item_index_dir()
@@ -454,6 +571,14 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels:
         if len(recs) >= top_k:
             break
 
+    # 4) Load or sample user reviews
+    sampled_reviews_data = _load_sampled_reviews(user_name)
+    if sampled_reviews_data is None:
+        # First call: sample and save reviews
+        sampled_reviews_data = _sample_user_reviews(user_name, num_reviews=5)
+        if sampled_reviews_data is not None:
+            _save_sampled_reviews(user_name, sampled_reviews_data)
+
     up = _user_paths(user_name)
 
     # Update the current round with recommendations
@@ -479,6 +604,7 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels:
     return {
         "dataset_category": DATASET_CATEGORY,
         "recommendations": recs,
+        "user_sampled_reviews": sampled_reviews_data.get("reviews", []) if sampled_reviews_data else [],
         "ts": _now(),
     }
 
