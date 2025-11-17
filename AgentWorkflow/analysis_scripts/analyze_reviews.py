@@ -55,5 +55,5 @@ def analyze_reviews(json_file_path):
     }
 
 if __name__ == "__main__":
-    json_file = "Amazon_Fashion_top_100_user_itemReview.json"
+    json_file = "/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/Amazon_Fashion_top_100_user_itemReview.json"
     results = analyze_reviews(json_file)
