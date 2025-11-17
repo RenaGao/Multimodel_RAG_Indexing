@@ -7,6 +7,7 @@ and creates t-SNE visualizations to explore the embedding space.
 Usage:
     python visualize_tsne.py --category Amazon_Fashion
     python visualize_tsne.py --path ./storage/vectorstore/catalog/Amazon_Fashion/item_index
+    python visualize_tsne.py --category Amazon_Fashion --perplexity 50 --max_iter 1500
 """
 
 import os
@@ -63,25 +64,25 @@ def load_embeddings_and_metadata(index_dir: Path):
     return embeddings, docs, texts
 
 
-def apply_tsne(embeddings, perplexity=30, n_iter=1000, random_state=42):
+def apply_tsne(embeddings, perplexity=30, max_iter=1000, random_state=42):
     """
     Apply t-SNE dimensionality reduction
 
     Args:
         embeddings: numpy array of embeddings
         perplexity: t-SNE perplexity parameter (5-50)
-        n_iter: number of iterations
+        max_iter: maximum number of iterations
         random_state: random seed for reproducibility
 
     Returns:
         numpy array of 2D coordinates
     """
-    print(f"Applying t-SNE (perplexity={perplexity}, n_iter={n_iter})...")
+    print(f"Applying t-SNE (perplexity={perplexity}, max_iter={max_iter})...")
 
     tsne = TSNE(
         n_components=2,
         perplexity=perplexity,
-        n_iter=n_iter,
+        max_iter=max_iter,
         random_state=random_state,
         verbose=1
     )
@@ -267,7 +268,7 @@ def main():
     parser.add_argument("--category", help="Category name (e.g., Amazon_Fashion)")
     parser.add_argument("--path", help="Direct path to item_index directory")
     parser.add_argument("--perplexity", type=int, default=30, help="t-SNE perplexity (default: 30)")
-    parser.add_argument("--n_iter", type=int, default=1000, help="t-SNE iterations (default: 1000)")
+    parser.add_argument("--max_iter", type=int, default=1000, help="t-SNE max iterations (default: 1000)")
     parser.add_argument("--output_dir", help="Output directory for plots")
 
     args = parser.parse_args()
@@ -299,7 +300,7 @@ def main():
     embeddings, docs, texts = load_embeddings_and_metadata(index_dir)
 
     # Apply t-SNE
-    coords_2d = apply_tsne(embeddings, perplexity=args.perplexity, n_iter=args.n_iter)
+    coords_2d = apply_tsne(embeddings, perplexity=args.perplexity, max_iter=args.max_iter)
 
     print(f"\nGenerating visualizations...")
 
