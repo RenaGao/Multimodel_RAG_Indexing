@@ -113,7 +113,7 @@ def main():
     all_questions_dict = load_all_questions(json_path)
 
     all_users_list = load_all_users(json_path)
-    selected_users = all_users_list[:]
+    selected_users = all_users_list[:1]
     
     # how many questions can run for one category
     per_user_limit = None # run all questions in the category
@@ -124,7 +124,8 @@ def main():
     # Qwen3 VL 8B Instruct
     llm_config = {
             "config_list": [{
-                "model": "qwen/qwen3-vl-8b-instruct",
+                # "model": "qwen/qwen3-vl-8b-instruct",
+                "model": "qwen/qwen3-8b", # use this since all text only
                 "api_key": os.getenv("QWEN_API_KEY"),
                 "base_url": "https://openrouter.ai/api/v1",
                 "price": [0.001, 0.002] # remove autogen price warning
@@ -265,7 +266,8 @@ def main():
         user_history = []
 
         for i, q in enumerate(questions, start=1):
-
+            if i == 1:
+                break
             groupchat = GroupChat(
                 agents=[user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent],
                 messages=list(user_history),
