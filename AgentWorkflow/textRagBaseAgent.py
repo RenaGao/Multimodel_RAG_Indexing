@@ -180,6 +180,7 @@ def main():
         if per_user_limit:
             questions = questions[:per_user_limit]
 
+        # TODO: Should ask llm to summarize previous history
         dialogue_history_agent = AssistantAgent(
             name=f"Dialogue_History_{user}_agent",
             llm_config=llm_config,
