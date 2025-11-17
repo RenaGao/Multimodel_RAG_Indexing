@@ -26,7 +26,6 @@ plt.rcParams['figure.figsize'] = (12, 8)
 
 BASE_DIR = Path("../storage")
 CATALOG_DIR = BASE_DIR / "vectorstore" / "catalog"
-OUTPUT_DIR = Path("./tsne_outputs")
 
 def load_embeddings_and_metadata(index_dir: Path):
     """
@@ -299,7 +298,7 @@ def main():
     if args.output_dir:
         output_dir = Path(args.output_dir)
     else:
-        output_dir = OUTPUT_DIR / version_str
+        output_dir = Path(f"./tsne_outputs_{version_str}")
     output_dir.mkdir(exist_ok=True, parents=True)
 
     category_name = args.category or "Amazon_Fashion"
