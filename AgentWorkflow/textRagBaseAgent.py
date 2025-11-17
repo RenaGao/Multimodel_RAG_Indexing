@@ -6,7 +6,27 @@ from helpFunctions import load_all_questions, load_all_users
 from datetime import datetime
 from pathlib import Path
 import json
+import sys
 from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent
+
+# Custom logger class to capture all print outputs
+class TeeLogger:
+    """Captures print output to both console and file"""
+    def __init__(self, log_file):
+        self.terminal = sys.stdout
+        self.log = open(log_file, 'w', encoding='utf-8')
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+        self.log.flush()  # Ensure immediate write
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+    def close(self):
+        self.log.close()
 
 # TODO: can be changed based on Rag need
 def make_save_hook(agent_name: str, user_name: str):
@@ -107,6 +127,23 @@ def main():
     load_dotenv()
     assert os.getenv("QWEN_API_KEY"), "Missing QWEN_API_KEY in .env"
 
+    # Setup logging
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_dir = Path("./logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"agent_run_{ts}.log"
+
+    # Redirect stdout to both console and log file
+    logger = TeeLogger(log_file)
+    sys.stdout = logger
+    sys.stderr = logger  # Also capture error messages
+
+    print(f"{'='*80}")
+    print(f"Agent Workflow Execution Started")
+    print(f"Timestamp: {ts}")
+    print(f"Log file: {log_file}")
+    print(f"{'='*80}\n")
+
     # question json file path
     json_path = Path("../questions/Amazon_Fashion_questions_20251110_214618.json")
 
@@ -114,12 +151,18 @@ def main():
 
     all_users_list = load_all_users(json_path)
     selected_users = all_users_list[:1]
-    
+
     # how many questions can run for one category
     per_user_limit = None # run all questions in the category
 
     # store output for json format
     results = {}
+
+    print(f"Configuration:")
+    print(f"  Selected users: {selected_users}")
+    print(f"  Per user limit: {per_user_limit or 'All questions'}")
+    print(f"  Question file: {json_path}")
+    print()
 
     # Qwen3 VL 8B Instruct
     llm_config = {
@@ -275,9 +318,16 @@ def main():
         # store user chat history
         user_history = []
 
+        print(f"\n{'='*80}")
+        print(f"Processing User: {user}")
+        print(f"Total Questions: {len(questions)}")
+        print(f"{'='*80}\n")
+
         for i, q in enumerate(questions, start=1):
-            if i == 3:
-                break
+            print(f"\n{'-'*80}")
+            print(f"[ROUND {i}/{len(questions)}] Question: {q}")
+            print(f"{'-'*80}\n")
+
             groupchat = GroupChat(
                 agents=[user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent],
                 messages=list(user_history),
@@ -290,19 +340,37 @@ def main():
             save_chat_history(f"[USER_QUESTION_{i}] [{user_proxy_agent.name}] {q}", user)
             user_proxy_agent.initiate_chat(manager, message=q)
 
-            user_history.extend(groupchat.messages[len(user_history)])
+            user_history.extend(groupchat.messages[len(user_history):])
+
+            print(f"\n[ROUND {i} COMPLETED]\n")
 
         results[user] = user_history
-            
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        print(f"\n{'='*80}")
+        print(f"Completed User: {user}")
+        print(f"Total Rounds: {len(questions)}")
+        print(f"{'='*80}\n")
+
+    output_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path("./")
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = f"shopping_text_rag_agent_output_{ts}.json"
+    out_path = f"shopping_text_rag_agent_output_{output_ts}.json"
 
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
-    print(f"Saved agent outputs.")
+    print(f"\n{'='*80}")
+    print(f"Agent Workflow Execution Completed")
+    print(f"Output saved to: {out_path}")
+    print(f"Log saved to: {log_file}")
+    print(f"{'='*80}\n")
+
+    # Restore stdout and close log file
+    sys.stdout = logger.terminal
+    sys.stderr = logger.terminal
+    logger.close()
+
+    print(f"Execution complete. Check {log_file} for detailed logs.")
 
 if __name__ == "__main__":
     main()
