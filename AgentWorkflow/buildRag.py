@@ -206,7 +206,7 @@ class Embedder:
         self.model = SentenceTransformer("Qwen/Qwen3-Embedding-8B", device=device)
         print(f"[Embedder] Model loaded successfully on {self.model.device}")
 
-    def encode(self, texts: List[str], batch_size: int = 128) -> np.ndarray:
+    def encode(self, texts: List[str], batch_size: int = 16) -> np.ndarray:
         print(f"[Embedder] Encoding {len(texts)} texts with batch_size={batch_size}")
         return self.model.encode(
             texts,
@@ -334,7 +334,7 @@ def build_review_embeddings_v2(
 
         if review_texts:
             # Generate embeddings for all reviews and take average
-            embs = embedder.encode(review_texts, batch_size=64)
+            embs = embedder.encode(review_texts, batch_size=8)
             avg_emb = np.mean(embs, axis=0)
             review_embeddings.append(avg_emb)
         else:
@@ -472,7 +472,7 @@ def build_item_index_for_category(category: str, version: str = "v1"):
     texts = [d["title"] + " " + d["text"] for d in docs]
 
     embedder_instance = Embedder()
-    emb = embedder_instance.encode(texts, batch_size=128)
+    emb = embedder_instance.encode(texts, batch_size=16)
 
     # For v2: also generate review embeddings
     if version == "v2":
@@ -573,7 +573,7 @@ def build_user_index_for(user_name: str, category: str):
     docs = normalize_user_profile_for_user(all_users, only_user_id=user_name)
 
     texts = [d["title"] + " " + d["text"] for d in docs]
-    emb = Embedder().encode(texts, batch_size=128)
+    emb = Embedder().encode(texts, batch_size=16)
 
     meta_path = user_dir / "meta.pkl"
     matrix_path = user_dir / "matrix.pkl"
