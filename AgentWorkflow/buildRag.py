@@ -118,14 +118,14 @@ def calculate_item_avg_ratings(item_review_data: dict) -> Dict[str, float]:
     Calculate average rating for each item from item_review_data
 
     Args:
-        item_review_data: dict with structure {asin: [review_list]}
+        item_review_data: dict with structure {parent_asin: [review_list]}
 
     Returns:
-        dict: {asin: avg_rating}
+        dict: {parent_asin: avg_rating}
     """
     item_avg_ratings = {}
 
-    for asin, reviews in item_review_data.items():
+    for parent_asin, reviews in item_review_data.items():
         if not isinstance(reviews, list):
             continue
 
@@ -140,9 +140,9 @@ def calculate_item_avg_ratings(item_review_data: dict) -> Dict[str, float]:
                         pass
 
         if ratings:
-            item_avg_ratings[asin] = sum(ratings) / len(ratings)
+            item_avg_ratings[parent_asin] = sum(ratings) / len(ratings)
         else:
-            item_avg_ratings[asin] = None
+            item_avg_ratings[parent_asin] = None
 
     return item_avg_ratings
 
@@ -151,14 +151,14 @@ def calculate_item_review_counts(item_review_data: dict) -> Dict[str, int]:
     Calculate total review count for each item from item_review_data
 
     Args:
-        item_review_data: dict with structure {asin: [review_list]}
+        item_review_data: dict with structure {parent_asin: [review_list]}
 
     Returns:
-        dict: {asin: review_count}
+        dict: {parent_asin: review_count}
     """
     return {
-        asin: len(reviews)
-        for asin, reviews in item_review_data.items()
+        parent_asin: len(reviews)
+        for parent_asin, reviews in item_review_data.items()
         if isinstance(reviews, list)
     }
 
@@ -187,7 +187,7 @@ def build_item_meta_map(user_data: dict) -> Dict[str, dict]:
                 continue
 
             # Use parent_asin as item_id
-            item_id = product_meta.get('parent_asin') or product_meta.get('asin')
+            item_id = product_meta.get('parent_asin')
             if item_id and item_id not in item_meta_map:
                 item_meta_map[item_id] = product_meta
 
@@ -234,7 +234,7 @@ def normalize_item_docs_from_itemReview_v1(
                 continue
 
             product_title = meta.get("title", "") or ""
-            parent_asin = meta.get("parent_asin") or meta.get("asin")
+            parent_asin = meta.get("parent_asin")
             store = meta.get("store", "") or ""
             details = meta.get("details") or {}
             brand = details.get("Brand") or meta.get("brand") or store
@@ -253,7 +253,7 @@ def normalize_item_docs_from_itemReview_v1(
                 if not isinstance(rv, dict):
                     continue
 
-                asin = rv.get("asin") or rv.get("parent_asin") or parent_asin
+                review_parent_asin = rv.get("parent_asin") or parent_asin
                 review_title = rv.get("title") or ""
                 review_text = rv.get("text") or ""
 
@@ -265,10 +265,11 @@ def normalize_item_docs_from_itemReview_v1(
                 if not full_text:
                     continue
 
-                item_id = asin or parent_asin or f"ITEM_{len(docs)+1}"
+                # Use parent_asin as item_id
+                item_id = parent_asin or f"ITEM_{len(docs)+1}"
                 doc_id = f"item::{item_id}::{_hash_bytes(full_text.encode('utf-8'))[:8]}"
 
-                # Use item average rating and review count from item_review_file
+                # Use item average rating and review count from item_review_file (keyed by parent_asin)
                 avg_rating = item_avg_ratings.get(item_id)
                 num_reviews = item_review_counts.get(item_id, 0)
 
@@ -296,21 +297,21 @@ def normalize_item_docs_from_itemReview_v2(
     Uses item_review_data as primary source and item_meta_map for metadata
 
     Args:
-        item_review_data: dict with structure {asin: [review_list]}
-        item_meta_map: dict with structure {asin: product_meta}
-        item_avg_ratings: dict with structure {asin: avg_rating}
+        item_review_data: dict with structure {parent_asin: [review_list]}
+        item_meta_map: dict with structure {parent_asin: product_meta}
+        item_avg_ratings: dict with structure {parent_asin: avg_rating}
 
     Returns:
         List of document dicts
     """
     docs: List[Dict[str, Any]] = []
 
-    for asin, reviews in item_review_data.items():
+    for parent_asin, reviews in item_review_data.items():
         if not isinstance(reviews, list) or len(reviews) == 0:
             continue
 
         # Get product metadata (may be None if not in user_data)
-        product_meta = item_meta_map.get(asin)
+        product_meta = item_meta_map.get(parent_asin)
 
         # Use construct_item_search_text to create structured text (max_reviews=0 means no reviews)
         full_text = construct_item_search_text(product_meta, reviews, max_reviews=0)
@@ -327,14 +328,14 @@ def normalize_item_docs_from_itemReview_v2(
             brand = details.get("Brand") or product_meta.get("brand") or store
             price = product_meta.get("price")
 
-        # Get pre-calculated average rating
-        avg_rating = item_avg_ratings.get(asin)
+        # Get pre-calculated average rating (keyed by parent_asin)
+        avg_rating = item_avg_ratings.get(parent_asin)
 
-        doc_id = f"item::{asin}"
+        doc_id = f"item::{parent_asin}"
 
         docs.append({
             "doc_id": doc_id,
-            "item_id": asin,
+            "item_id": parent_asin,
             "title": norm(product_title),
             "brand": norm(brand),
             "price": norm(price),
@@ -371,6 +372,7 @@ def build_item_index_for_category(category: str, version: str = "v1"):
 
     print(f"[INFO] Loading item review data from {item_review_file}")
     item_review_data = load_json(item_review_file)
+    # Note: item_review_data keys are already parent_asin
 
     # Calculate item statistics from item_review_file
     print(f"[INFO] Calculating average ratings for each item...")
