@@ -276,31 +276,67 @@ def save_chat_history(chat_history: str, user_name: str) -> bool:
         return False
 
 # Dialogue History Agent
-def rag_search_for_dialogue_history_agent(user_name: str) -> dict:
+def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = None) -> dict:
+    """
+    Search for relevant dialogue history rounds using semantic similarity.
+
+    Args:
+        user_name: User identifier
+        current_query: Current user query for similarity search (optional)
+
+    Returns:
+        dict with relative_rounds list
+    """
     up = _user_paths(user_name)
-    rows = list(_iter_jsonl(up["chat_history"]))
-    max_rows = 50
-    recent_rows = rows[-max_rows:] if rows else []
 
-    texts = [r.get("text", r.get("raw", "")) for r in recent_rows]
-    if texts:
-        last_bits = texts[-3:]
-        summary = " || ".join(last_bits)
-        if len(summary) > 350:
-            summary = summary[:347] + "..."
-        round_hint = "subsequent_rounds"
-    else:
-        summary = "No prior dialogue history — returning a neutral profile."
-        round_hint = "first_round"
+    # Load historical rounds
+    all_rounds = list(_iter_jsonl(up["chat_history"]))
 
-    payload = {
+    if not all_rounds:
+        # No history
+        return {
+            "user_name": user_name,
+            "relative_rounds": []
+        }
+
+    # Load round embeddings
+    round_embs, metadata = _load_round_embeddings(user_name)
+
+    if round_embs is None or current_query is None:
+        # No embeddings or no query: return empty
+        return {
+            "user_name": user_name,
+            "relative_rounds": []
+        }
+
+    # Generate embedding for current query
+    iidx_dir = item_index_dir()
+    iidx = _Index(iidx_dir)
+    iidx.load()
+
+    current_emb = _generate_round_embedding(current_query, iidx.model)
+    current_emb = current_emb.reshape(1, -1)
+
+    # Calculate similarities
+    sims = _cosine(current_emb, round_embs).ravel()
+
+    # Get top 1 (can be extended to top-k in future)
+    top_k = 1
+    order = sims.argsort()[::-1]
+    top_indices = order[:top_k]
+
+    # Build result
+    relative_rounds = []
+    for idx in top_indices:
+        relative_rounds.append({
+            "round_data": all_rounds[idx],
+            "similarity_score": float(sims[idx])
+        })
+
+    return {
         "user_name": user_name,
-        "summary": summary,
-        "chat_history": recent_rows,
-        "ts": _now(),
-        "round_hint": round_hint,
+        "relative_rounds": relative_rounds
     }
-    return payload
 
 def _load_user_profile_embedding(user_name: str) -> Optional[np.ndarray]:
     up = _user_paths(user_name)
@@ -357,13 +393,13 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels:
     candidates: List[Dict[str, Any]] = []
     for idx in order:
         d = iidx.doc(int(idx))
-        review_text = (d.get("text") or "").strip()
+        meta_text = (d.get("text") or "").strip()
         candidates.append({
             "item_id": d.get("item_id"),
             "title": d.get("title", ""),
             "price": d.get("price", ""),
             "brand": d.get("brand", ""),
-            "review": review_text,
+            "review": meta_text,
             "score": round(float(score_final[idx]), 6),
         })
 
