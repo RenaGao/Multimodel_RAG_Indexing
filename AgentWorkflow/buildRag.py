@@ -113,6 +113,70 @@ def load_json(path: Path):
     txt = txt.replace("NaN", "null")
     return json.loads(txt)
 
+def calculate_item_avg_ratings(item_review_data: dict) -> Dict[str, float]:
+    """
+    Calculate average rating for each item from item_review_data
+
+    Args:
+        item_review_data: dict with structure {asin: [review_list]}
+
+    Returns:
+        dict: {asin: avg_rating}
+    """
+    item_avg_ratings = {}
+
+    for asin, reviews in item_review_data.items():
+        if not isinstance(reviews, list):
+            continue
+
+        ratings = []
+        for review in reviews:
+            if isinstance(review, dict):
+                rating = review.get("rating")
+                if rating is not None:
+                    try:
+                        ratings.append(float(rating))
+                    except (ValueError, TypeError):
+                        pass
+
+        if ratings:
+            item_avg_ratings[asin] = sum(ratings) / len(ratings)
+        else:
+            item_avg_ratings[asin] = None
+
+    return item_avg_ratings
+
+def build_item_meta_map(user_data: dict) -> Dict[str, dict]:
+    """
+    Extract all item meta information from user_data
+
+    Args:
+        user_data: Data with structure {user_id: [[product_meta, reviews], ...]}
+
+    Returns:
+        dict: {item_id (parent_asin): product_meta}
+    """
+    item_meta_map = {}
+
+    for user_id, purchases in user_data.items():
+        if not isinstance(purchases, list):
+            continue
+
+        for block in purchases:
+            if not isinstance(block, list) or len(block) == 0:
+                continue
+
+            product_meta = block[0] if isinstance(block[0], dict) else None
+            if not product_meta:
+                continue
+
+            # Use parent_asin as item_id
+            item_id = product_meta.get('parent_asin') or product_meta.get('asin')
+            if item_id and item_id not in item_meta_map:
+                item_meta_map[item_id] = product_meta
+
+    return item_meta_map
+
 def _hash_bytes(b: bytes) -> str:
     return hashlib.sha1(b).hexdigest()
 
@@ -124,7 +188,10 @@ class Embedder:
     def encode(self, texts: List[str]) -> np.ndarray:
         return self.model.encode(texts, normalize_embeddings=True)
 
-def normalize_item_docs_from_itemReview_v1(all_users: Any) -> List[Dict[str, Any]]:
+def normalize_item_docs_from_itemReview_v1(all_users: Any, item_avg_ratings: Dict[str, float]) -> List[Dict[str, Any]]:
+    """
+    V1: One document per review, using item average rating (not single review rating)
+    """
     docs: List[Dict[str, Any]] = []
     if all_users is None:
         return docs
@@ -151,7 +218,7 @@ def normalize_item_docs_from_itemReview_v1(all_users: Any) -> List[Dict[str, Any
             store = meta.get("store", "") or ""
             details = meta.get("details") or {}
             brand = details.get("Brand") or meta.get("brand") or store
-            price = meta.get("price")  
+            price = meta.get("price")
 
             reviews_part = block[1:]
             if len(reviews_part) == 1 and isinstance(reviews_part[0], list):
@@ -169,12 +236,6 @@ def normalize_item_docs_from_itemReview_v1(all_users: Any) -> List[Dict[str, Any
                 asin = rv.get("asin") or rv.get("parent_asin") or parent_asin
                 review_title = rv.get("title") or ""
                 review_text = rv.get("text") or ""
-                rating = rv.get("rating")
-
-                try:
-                    rating = float(rating)
-                except Exception:
-                    rating = None
 
                 full_text = " ".join([
                     norm(review_title),
@@ -187,116 +248,78 @@ def normalize_item_docs_from_itemReview_v1(all_users: Any) -> List[Dict[str, Any
                 item_id = asin or parent_asin or f"ITEM_{len(docs)+1}"
                 doc_id = f"item::{item_id}::{_hash_bytes(full_text.encode('utf-8'))[:8]}"
 
+                # Use item average rating from item_review_file
+                avg_rating = item_avg_ratings.get(item_id)
+
                 docs.append({
                     "doc_id": doc_id,
                     "item_id": item_id,
                     "title": norm(product_title),
                     "brand": norm(brand),
                     "price": norm(price),
-                    "rating": rating,
+                    "rating": avg_rating,  # Now using item average rating
                     "text": full_text,
                     "source": "user_data_review",
                 })
 
     return docs
 
-def normalize_item_docs_from_itemReview_v2(all_users: Any) -> List[Dict[str, Any]]:
+def normalize_item_docs_from_itemReview_v2(
+    item_review_data: dict,
+    item_meta_map: Dict[str, dict],
+    item_avg_ratings: Dict[str, float]
+) -> List[Dict[str, Any]]:
     """
     V2: Create one document per item using only product metadata (no reviews)
-    Uses construct_item_search_text with max_reviews=0 to exclude review text
+    Uses item_review_data as primary source and item_meta_map for metadata
+
+    Args:
+        item_review_data: dict with structure {asin: [review_list]}
+        item_meta_map: dict with structure {asin: product_meta}
+        item_avg_ratings: dict with structure {asin: avg_rating}
+
+    Returns:
+        List of document dicts
     """
     docs: List[Dict[str, Any]] = []
-    if all_users is None:
-        return docs
 
-    # First, aggregate all data by item_id
-    item_data = {}  # item_id -> {meta, reviews[], ratings[]}
-
-    if isinstance(all_users, dict):
-        user_items = all_users.items()
-    else:
-        user_items = enumerate(all_users)
-
-    for user_id, blocks in user_items:
-        if not isinstance(blocks, list):
+    for asin, reviews in item_review_data.items():
+        if not isinstance(reviews, list) or len(reviews) == 0:
             continue
 
-        for block in blocks:
-            if not isinstance(block, list) or len(block) == 0:
-                continue
+        # Get product metadata (may be None if not in user_data)
+        product_meta = item_meta_map.get(asin)
 
-            meta = block[0] if isinstance(block[0], dict) else None
-            if not meta:
-                continue
-
-            parent_asin = meta.get("parent_asin") or meta.get("asin")
-            if not parent_asin:
-                continue
-
-            reviews_part = block[1:]
-            if len(reviews_part) == 1 and isinstance(reviews_part[0], list):
-                reviews = reviews_part[0]
-            else:
-                reviews = reviews_part
-
-            if not isinstance(reviews, list):
-                continue
-
-            # Initialize item data if first time seeing this item
-            if parent_asin not in item_data:
-                item_data[parent_asin] = {
-                    "meta": meta,
-                    "reviews": [],
-                    "ratings": []
-                }
-
-            # Collect all reviews for this item
-            for rv in reviews:
-                if not isinstance(rv, dict):
-                    continue
-
-                item_data[parent_asin]["reviews"].append(rv)
-
-                # Collect ratings
-                rating = rv.get("rating")
-                if rating is not None:
-                    try:
-                        item_data[parent_asin]["ratings"].append(float(rating))
-                    except Exception:
-                        pass
-
-    # Now create one document per item using construct_item_search_text
-    for item_id, data in item_data.items():
-        product_meta = data["meta"]
-        reviews = data["reviews"]
-
-        # Use construct_item_search_text to create structured text (only product metadata, no reviews)
+        # Use construct_item_search_text to create structured text (max_reviews=0 means no reviews)
         full_text = construct_item_search_text(product_meta, reviews, max_reviews=0)
 
         # Extract metadata
-        product_title = product_meta.get("title", "") or ""
-        store = product_meta.get("store", "") or ""
-        details = product_meta.get("details") or {}
-        brand = details.get("Brand") or product_meta.get("brand") or store
-        price = product_meta.get("price")
+        product_title = ""
+        brand = ""
+        price = ""
 
-        # Calculate average rating for this item
-        avg_rating = None
-        if data["ratings"]:
-            avg_rating = sum(data["ratings"]) / len(data["ratings"])
+        if product_meta:
+            product_title = product_meta.get("title", "") or ""
+            store = product_meta.get("store", "") or ""
+            details = product_meta.get("details") or {}
+            brand = details.get("Brand") or product_meta.get("brand") or store
+            price = product_meta.get("price")
 
-        doc_id = f"item::{item_id}"
+        # Get pre-calculated average rating
+        avg_rating = item_avg_ratings.get(asin)
+
+        doc_id = f"item::{asin}"
 
         docs.append({
             "doc_id": doc_id,
-            "item_id": item_id,
+            "item_id": asin,
             "title": norm(product_title),
             "brand": norm(brand),
             "price": norm(price),
             "rating": avg_rating,
             "num_reviews": len(reviews),
             "text": full_text,
-            "source": "user_data_item_metadata_only",
+            "source": "item_review_metadata_only",
         })
 
     return docs
@@ -318,15 +341,32 @@ def build_item_index_for_category(category: str, version: str = "v1"):
     print(f"\n[INFO] Building index with version: {version}")
     print(f"[INFO] Output directory: {item_dir}")
 
-    # use user_data to build item RAG
-    user_data_file, _ = get_files_for_category(category)
+    # Load data files
+    user_data_file, item_review_file = get_files_for_category(category)
+
+    print(f"[INFO] Loading user data from {user_data_file}")
     all_users = load_json(user_data_file)
+
+    print(f"[INFO] Loading item review data from {item_review_file}")
+    item_review_data = load_json(item_review_file)
+
+    # Calculate item average ratings from item_review_file
+    print(f"[INFO] Calculating average ratings for each item...")
+    item_avg_ratings = calculate_item_avg_ratings(item_review_data)
+    print(f"[INFO] Calculated ratings for {len(item_avg_ratings)} items")
+
+    # Build item metadata map from user_data
+    print(f"[INFO] Building item metadata map...")
+    item_meta_map = build_item_meta_map(all_users)
+    print(f"[INFO] Extracted metadata for {len(item_meta_map)} items")
 
     # Choose normalization function based on version
     if version == "v1":
-        docs = normalize_item_docs_from_itemReview_v1(all_users)
+        print(f"[INFO] Running v1: One doc per review with item avg ratings")
+        docs = normalize_item_docs_from_itemReview_v1(all_users, item_avg_ratings)
     elif version == "v2":
-        docs = normalize_item_docs_from_itemReview_v2(all_users)
+        print(f"[INFO] Running v2: One doc per item (metadata only) with avg ratings")
+        docs = normalize_item_docs_from_itemReview_v2(item_review_data, item_meta_map, item_avg_ratings)
     else:
         raise ValueError(f"Unknown version: {version}. Use 'v1' or 'v2'")
 
