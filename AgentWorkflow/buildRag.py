@@ -14,7 +14,7 @@ BASE_DIR   = Path("./storage")
 VSTORE_DIR = BASE_DIR / "vectorstore"
 USERS_DIR  = VSTORE_DIR / "users"     
 CATALOG_DIR = VSTORE_DIR / "catalog"
-DATA_DIR   = Path("../data")
+DATA_DIR   = Path("/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/")
 
 for p in [VSTORE_DIR, DATA_DIR, USERS_DIR, CATALOG_DIR]:
     p.mkdir(parents=True, exist_ok=True)
