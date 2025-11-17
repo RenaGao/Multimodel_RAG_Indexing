@@ -146,6 +146,22 @@ def calculate_item_avg_ratings(item_review_data: dict) -> Dict[str, float]:
 
     return item_avg_ratings
 
+def calculate_item_review_counts(item_review_data: dict) -> Dict[str, int]:
+    """
+    Calculate total review count for each item from item_review_data
+
+    Args:
+        item_review_data: dict with structure {asin: [review_list]}
+
+    Returns:
+        dict: {asin: review_count}
+    """
+    return {
+        asin: len(reviews)
+        for asin, reviews in item_review_data.items()
+        if isinstance(reviews, list)
+    }
+
 def build_item_meta_map(user_data: dict) -> Dict[str, dict]:
     """
     Extract all item meta information from user_data
@@ -188,9 +204,13 @@ class Embedder:
     def encode(self, texts: List[str]) -> np.ndarray:
         return self.model.encode(texts, normalize_embeddings=True)
 
-def normalize_item_docs_from_itemReview_v1(all_users: Any, item_avg_ratings: Dict[str, float]) -> List[Dict[str, Any]]:
+def normalize_item_docs_from_itemReview_v1(
+    all_users: Any,
+    item_avg_ratings: Dict[str, float],
+    item_review_counts: Dict[str, int]
+) -> List[Dict[str, Any]]:
     """
-    V1: One document per review, using item average rating (not single review rating)
+    V1: One document per review, using item average rating and total review count from item_review_file
     """
     docs: List[Dict[str, Any]] = []
     if all_users is None:
@@ -248,8 +268,9 @@ def normalize_item_docs_from_itemReview_v1(all_users: Any, item_avg_ratings: Dic
                 item_id = asin or parent_asin or f"ITEM_{len(docs)+1}"
                 doc_id = f"item::{item_id}::{_hash_bytes(full_text.encode('utf-8'))[:8]}"
 
-                # Use item average rating from item_review_file
+                # Use item average rating and review count from item_review_file
                 avg_rating = item_avg_ratings.get(item_id)
+                num_reviews = item_review_counts.get(item_id, 0)
 
                 docs.append({
                     "doc_id": doc_id,
@@ -257,7 +278,8 @@ def normalize_item_docs_from_itemReview_v1(all_users: Any, item_avg_ratings: Dic
                     "title": norm(product_title),
                     "brand": norm(brand),
                     "price": norm(price),
-                    "rating": avg_rating,  # Now using item average rating
+                    "rating": avg_rating,
+                    "num_reviews": num_reviews,  # Total reviews from item_review_file
                     "text": full_text,
                     "source": "user_data_review",
                 })
@@ -350,10 +372,14 @@ def build_item_index_for_category(category: str, version: str = "v1"):
     print(f"[INFO] Loading item review data from {item_review_file}")
     item_review_data = load_json(item_review_file)
 
-    # Calculate item average ratings from item_review_file
+    # Calculate item statistics from item_review_file
     print(f"[INFO] Calculating average ratings for each item...")
     item_avg_ratings = calculate_item_avg_ratings(item_review_data)
     print(f"[INFO] Calculated ratings for {len(item_avg_ratings)} items")
+
+    print(f"[INFO] Calculating review counts for each item...")
+    item_review_counts = calculate_item_review_counts(item_review_data)
+    print(f"[INFO] Calculated review counts for {len(item_review_counts)} items")
 
     # Build item metadata map from user_data
     print(f"[INFO] Building item metadata map...")
@@ -362,8 +388,8 @@ def build_item_index_for_category(category: str, version: str = "v1"):
 
     # Choose normalization function based on version
     if version == "v1":
-        print(f"[INFO] Running v1: One doc per review with item avg ratings")
-        docs = normalize_item_docs_from_itemReview_v1(all_users, item_avg_ratings)
+        print(f"[INFO] Running v1: One doc per review with item avg ratings and review counts")
+        docs = normalize_item_docs_from_itemReview_v1(all_users, item_avg_ratings, item_review_counts)
     elif version == "v2":
         print(f"[INFO] Running v2: One doc per item (metadata only) with avg ratings")
         docs = normalize_item_docs_from_itemReview_v2(item_review_data, item_meta_map, item_avg_ratings)
