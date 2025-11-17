@@ -378,24 +378,26 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels:
             break
 
     up = _user_paths(user_name)
-    history_excerpt = []
-    if up["chat_history"].exists():
-        all_rows = list(_iter_jsonl(up["chat_history"]))
-        for row in all_rows[-5:]:
-            history_excerpt.append(_norm(row.get("text", row.get("raw", "")))[:400])
 
-    round_payload = {
-        "ts": _now(),
-        "dataset_category": DATASET_CATEGORY,
-        "user_query": user_query,
-        "user_labels": user_labels,
-        "recommendations": recs,
-        "history_excerpt": history_excerpt,
-        "engine": "Sentence-Transformers (Qwen3-Embedding-8B)",
-        "fusion": fusion_info,
-    }
-    with up["last_round"].open("w", encoding="utf-8") as f:
-        json.dump(round_payload, f, ensure_ascii=False, indent=2)
+    # Update the current round with recommendations
+    if up["chat_rounds"].exists():
+        all_rounds = list(_iter_jsonl(up["chat_rounds"]))
+        if all_rounds:
+            # Update the last round with recommendation data
+            last_round = all_rounds[-1]
+            last_round["recommendations"] = recs
+            last_round["user_labels"] = user_labels
+            last_round["engine"] = "Sentence-Transformers (Qwen3-Embedding-8B)"
+            last_round["fusion_info"] = fusion_info
+            last_round["metadata"]["recommendations_count"] = len(recs)
+
+            # Rewrite all rounds with updated last round
+            with up["chat_rounds"].open("w", encoding="utf-8") as f:
+                for i, r in enumerate(all_rounds):
+                    if i == len(all_rounds) - 1:
+                        f.write(json.dumps(last_round, ensure_ascii=False) + "\n")
+                    else:
+                        f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
     return {
         "dataset_category": DATASET_CATEGORY,

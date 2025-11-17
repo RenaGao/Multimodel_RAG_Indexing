@@ -40,6 +40,7 @@ def construct_item_search_text(
     all_item_reviews: List[dict],
     max_reviews: int = 20
 ) -> str:
+    # TODO: Add Details!
     """
     Construct text for embedding from product metadata and reviews
     (Copied from fashion_rag_index.py)
@@ -378,7 +379,8 @@ def normalize_item_docs_from_itemReview_v2(
         product_title = ""
         brand = ""
         price = ""
-
+        
+        # TODO: Details add to full_text!!!
         if product_meta:
             product_title = product_meta.get("title", "") or ""
             store = product_meta.get("store", "") or ""
