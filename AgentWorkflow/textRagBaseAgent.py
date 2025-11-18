@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 import json
 import sys
-from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent
+from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, append_agent_message
 
 # Custom logger class to capture all print outputs
 class TeeLogger:
@@ -27,58 +27,6 @@ class TeeLogger:
 
     def close(self):
         self.log.close()
-
-# TODO: can be changed based on Rag need
-def make_save_hook(agent_name: str, user_name: str):
-    """Save a compact version of the latest inbound event for this agent before it replies."""
-    def _hook(recipient, messages, sender, config):
-        try:
-            if not messages:
-                return False, None
-
-            msg = messages[-1]  
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-            tool_calls = msg.get("tool_calls") or msg.get("function_call")
-
-            if role in ("tool", "function"):
-                return False, None
-
-            if (not content or str(content).strip() in ("", "None")) and tool_calls:
-                return False, None
-
-            text = ""
-            if isinstance(content, str):
-                text = content
-
-            elif isinstance(content, list):
-                parts = []
-                for c in content:
-                    if not isinstance(c, dict):
-                        continue
-                    if c.get("type") == "text" and "text" in c:
-                        parts.append(str(c["text"]))
-                    elif "content" in c:
-                        parts.append(str(c["content"]))
-                text = " ".join(parts)
-
-            else:
-                text = str(content)
-
-            text = (text or "").strip()
-            if not text:
-                return False, None 
-            
-            clean = f"[{role}] {text}" if role else text
-
-            save_chat_history(clean, user_name)
-
-        except Exception as e:
-            save_chat_history(f"[hook_error] {type(e).__name__}: {e}", user_name)
-
-        return False, None
-
-    return _hook
 
 def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent):
     """
@@ -320,30 +268,6 @@ def main():
             name="rag_search_for_recommend_agent"
         )(rag_search_for_recommend_agent)
 
-        user_proxy_agent.register_reply(
-            [autogen.Agent, None],
-            reply_func=make_save_hook(user_proxy_agent.name, user),
-            config={},
-        )
-
-        dialogue_history_agent.register_reply(
-            [autogen.Agent, None],
-            reply_func=make_save_hook(dialogue_history_agent.name, user),
-            config={},
-        )
-
-        recommend_agent.register_reply(
-            [autogen.Agent, None],
-            reply_func=make_save_hook(recommend_agent.name, user),
-            config={},
-        )
-
-        reason_agent.register_reply(
-            [autogen.Agent, None],
-            reply_func=make_save_hook(reason_agent.name, user),
-            config={},
-        )
-
         # output separated by category
         results[user] = []
 
@@ -372,7 +296,37 @@ def main():
             save_chat_history(f"[USER_QUESTION_{i}] [{user_proxy_agent.name}] {q}", user)
             user_proxy_agent.initiate_chat(manager, message=q)
 
-            user_history.extend(groupchat.messages[len(user_history):])
+            # Extract and save new messages from this round
+            prev_len = len(user_history)
+            new_messages = groupchat.messages[prev_len:]
+
+            # Save agent outputs to chat history
+            for msg in new_messages:
+                if not isinstance(msg, dict):
+                    continue
+
+                msg_name = msg.get("name", "")
+                msg_role = msg.get("role", "")
+                msg_content = msg.get("content", "")
+
+                # Skip tool messages
+                if msg_role in ("tool", "function"):
+                    continue
+
+                # Skip empty messages
+                if not msg_content or str(msg_content).strip() in ("", "None"):
+                    continue
+
+                # Skip user_proxy messages (already saved in line 296)
+                if msg_name == user_proxy_agent.name:
+                    continue
+
+                # Save assistant agent outputs
+                if msg_name in [dialogue_history_agent.name, recommend_agent.name, reason_agent.name]:
+                    append_agent_message(msg_content, "assistant", user)
+
+            # Update history for next round
+            user_history.extend(new_messages)
 
             print(f"\n[ROUND {i} COMPLETED]\n")
 

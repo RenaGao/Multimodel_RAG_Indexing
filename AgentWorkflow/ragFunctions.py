@@ -412,6 +412,52 @@ def save_chat_history(chat_history: str, user_name: str) -> bool:
         print(f"[SAVE ERROR] {e}")
         return False
 
+def append_agent_message(content: str, role: str, user_name: str) -> bool:
+    """
+    Append an agent message to the current round in chat history.
+
+    Args:
+        content: Message content
+        role: Message role ("user" or "assistant")
+        user_name: User identifier
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        up = _user_paths(user_name)
+
+        if not up["chat_history"].exists():
+            print(f"[APPEND_MSG ERROR] No chat history found for user {user_name}")
+            return False
+
+        # Load all rounds
+        all_rounds = list(_iter_jsonl(up["chat_history"]))
+
+        if not all_rounds:
+            print(f"[APPEND_MSG ERROR] No rounds found in chat history")
+            return False
+
+        # Update the last round
+        last_round = all_rounds[-1]
+        last_round["conversation"].append({
+            "role": role,
+            "content": content,
+            "timestamp": _now()
+        })
+
+        # Rewrite all rounds
+        with up["chat_history"].open("w", encoding="utf-8") as f:
+            for r in all_rounds:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+        print(f"[APPEND_MSG] Added {role} message to round {last_round['round_number']} for user={user_name}")
+        return True
+
+    except Exception as e:
+        print(f"[APPEND_MSG ERROR] {e}")
+        return False
+
 # Dialogue History Agent
 def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = None) -> dict:
     """
