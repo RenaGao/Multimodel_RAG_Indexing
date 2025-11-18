@@ -652,7 +652,7 @@ def _load_user_profile_embedding(user_name: str) -> Optional[np.ndarray]:
 
 
 # Recommend Agent
-def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels: List[str], top_k: int) -> dict:
+def rag_search_for_recommend_agent(user_name: str, user_query: str, top_k: int = 5) -> dict:
     # 1) loading Item RAG
     iidx_dir = item_index_dir()
     iidx = _Index(iidx_dir)
@@ -661,7 +661,7 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels:
         raise RuntimeError("Item index is not properly loaded (matrix/model is None).")
 
     # 2) construct query embedding
-    q_text = f"{user_query or ''} {' '.join(user_labels or [])}".strip()
+    q_text = (user_query or '').strip()
     q_emb = iidx.model.encode([q_text], normalize_embeddings=True)
 
     # 3) compute similarities with metadata and review embeddings
@@ -724,7 +724,6 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels:
             # Update the last round with recommendation data
             last_round = all_rounds[-1]
             last_round["recommendations"] = recs
-            last_round["user_labels"] = user_labels
             last_round["fusion_info"] = fusion_info
 
             # Rewrite all rounds with updated last round
