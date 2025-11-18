@@ -191,10 +191,42 @@ class Embedder:
             convert_to_tensor=False
         )
 
-def build_review_embeddings_v2(
+def load_user_target_products(questions_file: Path) -> Dict[str, str]:
+    """
+    Load questions file and create mapping of user_id -> target_product parent_asin
+
+    Args:
+        questions_file: Path to questions JSON file
+
+    Returns:
+        Dict mapping user_id to their target product's parent_asin
+    """
+    if not questions_file.exists():
+        print(f"[WARN] Questions file not found: {questions_file}")
+        return {}
+
+    questions_data = load_json(questions_file)
+    if not questions_data:
+        return {}
+
+    user_target_map = {}
+    for entry in questions_data:
+        user_id = entry.get('user_id')
+        target_product = entry.get('target_product', {})
+        product_meta = target_product.get('product_meta', {})
+        parent_asin = product_meta.get('parent_asin')
+
+        if user_id and parent_asin:
+            user_target_map[user_id] = parent_asin
+
+    print(f"[INFO] Loaded {len(user_target_map)} user-target product mappings")
+    return user_target_map
+
+def build_review_embeddings(
     item_review_data: dict,
     doc_order: List[str],
-    embedder
+    embedder,
+    user_target_map: Dict[str, str] = None
 ) -> np.ndarray:
     """
     Generate average review embeddings for each item
@@ -203,20 +235,37 @@ def build_review_embeddings_v2(
         item_review_data: dict with structure {parent_asin: [review_list]}
         doc_order: List of parent_asins in the same order as docs
         embedder: Embedder instance
+        user_target_map: Optional dict mapping user_id -> target_product_asin
+                        If provided, excludes reviews from users for their target products
 
     Returns:
         numpy array: Each row is the average embedding of all reviews for that item
     """
     review_embeddings = []
+    total_excluded = 0
 
     for parent_asin in tqdm(doc_order, desc="Building review embeddings"):
         reviews = item_review_data.get(parent_asin, [])
 
-        # Collect all review texts
+        # Collect all review texts (with optional filtering)
         review_texts = []
+        excluded_count = 0
+
         for rv in reviews:
             if not isinstance(rv, dict):
                 continue
+
+            # Filter out target product reviews
+            if user_target_map:
+                review_user_id = rv.get('user_id')
+                target_asin = user_target_map.get(review_user_id)
+
+                # Skip if this review is from a user reviewing their target product
+                if review_user_id and target_asin == parent_asin:
+                    excluded_count += 1
+                    total_excluded += 1
+                    continue
+
             title = rv.get('title', '')
             text = rv.get('text', '')
             combined = f"{title} {text}".strip()
@@ -233,6 +282,9 @@ def build_review_embeddings_v2(
             # Get dimension from embedder
             dim = embedder.model.get_sentence_embedding_dimension()
             review_embeddings.append(np.zeros(dim))
+
+    if total_excluded > 0:
+        print(f"[INFO] Excluded {total_excluded} target product reviews from embeddings")
 
     return np.array(review_embeddings, dtype=np.float32)
 
@@ -293,13 +345,14 @@ def normalize_item_docs_from_itemReview(
 
     return docs
 
-def build_item_index_for_category(category: str):
+def build_item_index_for_category(category: str, questions_file: Path = None):
     """
     Build item index for a category
     Creates one document per item using product metadata only
 
     Args:
         category: Category name (e.g., "Amazon_Fashion")
+        questions_file: Optional path to questions JSON file for excluding target product reviews
     """
     # Create model-specific directory
     model_suffix = "qwen3"
@@ -318,6 +371,12 @@ def build_item_index_for_category(category: str):
     print(f"[INFO] Loading item review data from {item_review_file}")
     item_review_data = load_json(item_review_file)
     # Note: item_review_data keys are already parent_asin
+
+    # Load user-target product mapping if questions file provided
+    user_target_map = None
+    if questions_file and questions_file.exists():
+        print(f"[INFO] Loading user-target product mappings from {questions_file}")
+        user_target_map = load_user_target_products(questions_file)
 
     # Build item metadata map from user_data
     print(f"[INFO] Building item metadata map...")
@@ -359,7 +418,7 @@ def build_item_index_for_category(category: str):
     # Generate review embeddings
     print(f"[INFO] Generating review embeddings...")
     doc_order = [d["item_id"] for d in docs]
-    review_emb = build_review_embeddings_v2(item_review_data, doc_order, embedder_instance)
+    review_emb = build_review_embeddings(item_review_data, doc_order, embedder_instance, user_target_map)
     print(f"[INFO] Generated review embeddings: {review_emb.shape}")
 
     meta_path = item_dir / "meta.pkl"
@@ -474,8 +533,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Build RAG index for Amazon product data")
     parser.add_argument("--category", help="e.g. All_Beauty or Amazon_Fashion")
     parser.add_argument("--all", action="store_true", help="Build index for all available categories")
+    parser.add_argument(
+        "--questions-file",
+        default="../questions/Amazon_Fashion_questions_20251110_214618.json",
+        help="Path to questions JSON file for excluding target product reviews (default: ../questions/Amazon_Fashion_questions_20251110_214618.json)"
+    )
 
     args = parser.parse_args()
+
+    # Parse questions file path if provided
+    questions_path = Path(args.questions_file) if args.questions_file else None
 
     if args.all:
         cat2file = {}
@@ -490,8 +557,8 @@ if __name__ == "__main__":
         else:
             for cat, fname in sorted(cat2file.items()):
                 print(f"\n===== Building item index for category: {cat} (from {fname}) =====")
-                build_item_index_for_category(cat)
+                build_item_index_for_category(cat, questions_path)
 
     elif args.category:
         print(f"\n===== Building item index for category: {args.category} =====")
-        build_item_index_for_category(args.category)
+        build_item_index_for_category(args.category, questions_path)
