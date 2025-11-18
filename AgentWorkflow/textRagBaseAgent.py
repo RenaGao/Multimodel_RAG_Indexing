@@ -187,11 +187,18 @@ def main():
             system_message=(
                     "You are a Dialogue History Agent. "
                     "Your task has exactly two steps and must stop after completing them:\n"
+
                     "Step 1: Immediately call the tool 'rag_search_for_dialogue_history_agent' once "
                     f"to retrieve past dialogue and preference information for the user '{user}'. "
                     "When calling this tool, you MUST pass the current user's query from the conversation as the 'current_query' parameter "
                     "to find semantically similar past interactions.\n"
-                    "Step 2: Using only the tool result, generate concise summary of preferences. "
+
+                    "Step 2: Using the tool result, generate a concise summary:\n"
+                    "  - If 'relative_rounds' is EMPTY (empty list) or contains no data: "
+                    "Simply state 'No previous dialogue history available for this user.' and END your turn immediately.\n"
+                    "  - If 'relative_rounds' contains data: "
+                    "Summarize the user's preferences and past interactions based on the retrieved information.\n\n"
+
                     "Do not call any other tools, and do not produce any response before the tool result is obtained. "
                     "End your turn after generating the final response."
             ),
