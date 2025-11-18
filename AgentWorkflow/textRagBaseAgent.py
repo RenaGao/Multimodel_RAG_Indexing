@@ -166,7 +166,8 @@ def main():
             system_message=(
                     "You are a Dialogue History Agent.\n\n"
 
-                    "STEP 1: Call the tool 'rag_search_for_dialogue_history_agent' once with the current query.\n"
+                    "STEP 1: Immediately and automatically call the tool 'rag_search_for_dialogue_history_agent' ONCE. "
+                    "Pass the user's query as the 'current_query' parameter.\n"
                     "The tool returns:\n"
                     "- 'relative_rounds': Similar past conversations from RAG search\n"
                     "- 'previous_summaries': Summaries of previous rounds in THIS session\n\n"
@@ -190,7 +191,7 @@ def main():
                 "Your task has exactly FOUR steps and must stop after completing them.\n\n"
 
                 "STEP 1: Immediately and automatically call the tool 'rag_search_for_recommend_agent' ONCE. "
-                "Use the user's query exactly as provided.\n"
+                "Pass the user's query as the 'user_query' parameter.\n"
 
                 "STEP 2: The tool result will contain 'recommendations' and 'user_sampled_reviews'. "
                 "Analyze the 'user_sampled_reviews' (5 past reviews from this user) to extract user preferences:\n"
@@ -274,31 +275,55 @@ def main():
             code_execution_config=False,
         )
 
+        # Create wrapper that captures user_id for dialogue_history_agent
+        def make_dh_tool_wrapper(user_id: str):
+            def wrapper(current_query: str):
+                return rag_search_for_dialogue_history_agent(
+                    user_name=user_id,
+                    current_query=current_query
+                )
+            return wrapper
+
+        dh_wrapper = make_dh_tool_wrapper(user)
+
         dialogue_history_agent.register_for_llm(
             name="rag_search_for_dialogue_history_agent",
             description=(
                 "Retrieve relevant user dialogue history and preference records from the vector database. "
-                "Use it to infer user interests, habits, or preference."
+                "Use it to infer user interests, habits, or preference. "
+                "Only requires 'current_query' parameter (user_name is automatically provided)."
             ),
-        )(rag_search_for_dialogue_history_agent)
+        )(dh_wrapper)
 
         dialogue_history_agent.register_for_execution(
             name="rag_search_for_dialogue_history_agent"
-        )(rag_search_for_dialogue_history_agent)
+        )(dh_wrapper)
 
         print(f"[DEBUG] Tool 'rag_search_for_dialogue_history_agent' registered for {user}")
+
+        # Create wrapper that captures user_id for recommend_agent
+        def make_rec_tool_wrapper(user_id: str):
+            def wrapper(user_query: str):
+                return rag_search_for_recommend_agent(
+                    user_name=user_id,
+                    user_query=user_query
+                )
+            return wrapper
+
+        rec_wrapper = make_rec_tool_wrapper(user)
 
         recommend_agent.register_for_llm(
             name="rag_search_for_recommend_agent",
             description=(
                 "Search the vector database for product, item, or knowledge information relevant to the user's query. "
-                "Use it to generate personalized shopping recommendations."
+                "Use it to generate personalized shopping recommendations. "
+                "Only requires 'user_query' parameter (user_name is automatically provided)."
             ),
-        )(rag_search_for_recommend_agent)
+        )(rec_wrapper)
 
         recommend_agent.register_for_execution(
             name="rag_search_for_recommend_agent"
-        )(rag_search_for_recommend_agent)
+        )(rec_wrapper)
 
         # output separated by category
         results[user] = []
