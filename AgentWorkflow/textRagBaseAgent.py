@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 import autogen
 from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
 import os
-from helpFunctions import load_all_questions, load_all_users
+from helpFunctions import load_all_questions, load_all_users, export_dialogues_for_eval
 from datetime import datetime
 from pathlib import Path
 import json
@@ -403,6 +403,9 @@ def main():
         print(f"Completed User: {user}")
         print(f"Total Rounds: {len(questions)}")
         print(f"{'='*80}\n")
+
+        # Export dialogues for evaluation
+        export_dialogues_for_eval(user)
 
     output_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path("./")
