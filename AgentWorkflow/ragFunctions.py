@@ -353,11 +353,7 @@ def save_chat_history(chat_history: str, user_name: str) -> bool:
                         "content": user_query,
                         "timestamp": timestamp
                     }
-                ],
-                "metadata": {
-                    "query_length": len(user_query),
-                    "round_status": "in_progress"
-                }
+                ]
             }
 
             # Save round data
@@ -637,9 +633,7 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, user_labels:
             last_round = all_rounds[-1]
             last_round["recommendations"] = recs
             last_round["user_labels"] = user_labels
-            last_round["engine"] = "Sentence-Transformers (Qwen3-Embedding-8B)"
             last_round["fusion_info"] = fusion_info
-            last_round["metadata"]["recommendations_count"] = len(recs)
 
             # Rewrite all rounds with updated last round
             with up["chat_history"].open("w", encoding="utf-8") as f:
