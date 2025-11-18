@@ -286,7 +286,7 @@ def main():
 
             groupchat = GroupChat(
                 agents=[user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent],
-                messages=list(user_history),
+                messages=[],  # Each round is independent; dialogue_history_agent uses RAG for history
                 max_round=10, # leave a number here
                 speaker_selection_method=make_simple_flow(user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent)
             )
@@ -297,8 +297,7 @@ def main():
             user_proxy_agent.initiate_chat(manager, message=q)
 
             # Extract and save new messages from this round
-            prev_len = len(user_history)
-            new_messages = groupchat.messages[prev_len:]
+            new_messages = groupchat.messages  # All messages from this independent round
 
             # Save agent outputs to chat history
             print(f"\n[DEBUG] Processing {len(new_messages)} new messages for Round {i}")
