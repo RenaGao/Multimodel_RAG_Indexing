@@ -456,6 +456,90 @@ def append_agent_message(content: str, role: str, agent_name: str, user_name: st
         print(f"[APPEND_MSG ERROR] {e}")
         return False
 
+def save_round_summary(user_name: str, round_number: int, summary: str) -> bool:
+    """
+    Save a summary for a specific round to chat_history.
+
+    Args:
+        user_name: User identifier
+        round_number: Round number to save summary for
+        summary: Summary text
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        up = _user_paths(user_name)
+
+        if not up["chat_history"].exists():
+            print(f"[SAVE_SUMMARY ERROR] No chat history found for user {user_name}")
+            return False
+
+        # Load all rounds
+        all_rounds = list(_iter_jsonl(up["chat_history"]))
+
+        # Find and update the specific round
+        found = False
+        for round_data in all_rounds:
+            if round_data.get("round_number") == round_number:
+                round_data["round_summary"] = summary
+                found = True
+                break
+
+        if not found:
+            print(f"[SAVE_SUMMARY ERROR] Round {round_number} not found")
+            return False
+
+        # Rewrite all rounds
+        with up["chat_history"].open("w", encoding="utf-8") as f:
+            for r in all_rounds:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+        print(f"[SAVE_SUMMARY] Saved summary for round {round_number}, user={user_name}")
+        return True
+
+    except Exception as e:
+        print(f"[SAVE_SUMMARY ERROR] {e}")
+        return False
+
+def load_previous_round_summaries(user_name: str, up_to_round: int) -> List[Dict]:
+    """
+    Load all round summaries up to (but not including) a specific round.
+
+    Args:
+        user_name: User identifier
+        up_to_round: Load summaries before this round number
+
+    Returns:
+        List of {"round_number": int, "summary": str}
+    """
+    try:
+        up = _user_paths(user_name)
+
+        if not up["chat_history"].exists():
+            return []
+
+        all_rounds = list(_iter_jsonl(up["chat_history"]))
+        summaries = []
+
+        for round_data in all_rounds:
+            round_num = round_data.get("round_number")
+            if round_num >= up_to_round:
+                break
+
+            summary = round_data.get("round_summary")
+            if summary:
+                summaries.append({
+                    "round_number": round_num,
+                    "summary": summary
+                })
+
+        return summaries
+
+    except Exception as e:
+        print(f"[LOAD_SUMMARIES ERROR] {e}")
+        return []
+
 # Dialogue History Agent
 def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = None) -> dict:
     """
@@ -479,6 +563,11 @@ def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = N
     all_rounds = list(_iter_jsonl(up["chat_history"]))
     print(f"[DEBUG] Found {len(all_rounds)} total rounds")
 
+    # Determine current round number and load previous summaries
+    current_round_number = len(all_rounds)
+    previous_summaries = load_previous_round_summaries(user_name, current_round_number)
+    print(f"[DEBUG] Loaded {len(previous_summaries)} previous round summaries")
+
     # Exclude the last round (current round being processed)
     if len(all_rounds) > 0:
         all_rounds = all_rounds[:-1]
@@ -489,7 +578,8 @@ def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = N
         print(f"[DEBUG] No historical rounds to search, returning empty")
         return {
             "user_name": user_name,
-            "relative_rounds": []
+            "relative_rounds": [],
+            "previous_summaries": previous_summaries
         }
 
     # Load round embeddings
@@ -505,7 +595,8 @@ def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = N
         print(f"[DEBUG] No embeddings or no query (round_embs={round_embs is not None}, current_query={current_query is not None}), returning empty")
         return {
             "user_name": user_name,
-            "relative_rounds": []
+            "relative_rounds": [],
+            "previous_summaries": previous_summaries
         }
 
     # Generate embedding for current query
@@ -538,7 +629,8 @@ def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = N
 
     return {
         "user_name": user_name,
-        "relative_rounds": relative_rounds
+        "relative_rounds": relative_rounds,
+        "previous_summaries": previous_summaries
     }
 
 def _load_user_profile_embedding(user_name: str) -> Optional[np.ndarray]:

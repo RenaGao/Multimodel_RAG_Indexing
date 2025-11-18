@@ -2,12 +2,12 @@ from dotenv import load_dotenv
 import autogen
 from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
 import os
-from helpFunctions import load_all_questions, load_all_users
+from helpFunctions import load_all_questions, load_all_users, generate_and_save_round_summary
 from datetime import datetime
 from pathlib import Path
 import json
 import sys
-from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, append_agent_message
+from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, append_agent_message, save_round_summary
 
 # Custom logger class to capture all print outputs
 class TeeLogger:
@@ -164,15 +164,19 @@ def main():
             name=f"Dialogue_History_{user}_agent",
             llm_config=llm_config,
             system_message=(
-                    "You are a Dialogue History Agent. "
-                    "Your task has exactly two steps and must stop after completing them:\n"
-                    "Step 1: Immediately call the tool 'rag_search_for_dialogue_history_agent' once "
-                    f"to retrieve past dialogue and preference information for the user '{user}'. "
-                    "When calling this tool, you MUST pass the current user's query from the conversation as the 'current_query' parameter "
-                    "to find semantically similar past interactions.\n"
-                    "Step 2: Using only the tool result, generate concise summary of preferences. "
-                    "Do not call any other tools, and do not produce any response before the tool result is obtained. "
-                    "End your turn after generating the final response."
+                    "You are a Dialogue History Agent.\n\n"
+
+                    "STEP 1: Call the tool 'rag_search_for_dialogue_history_agent' once with the current query.\n"
+                    "The tool returns:\n"
+                    "- 'relative_rounds': Similar past conversations from RAG search\n"
+                    "- 'previous_summaries': Summaries of previous rounds in THIS session\n\n"
+
+                    "STEP 2: Generate a concise summary (2-4 sentences) based on:\n"
+                    "1. Previous round summaries (shows user's journey in this session)\n"
+                    "2. Similar past conversations (shows long-term preferences)\n"
+                    "3. Focus on user preferences, patterns, and context for recommendations\n\n"
+
+                    "Do not call any other tools. End your turn after generating the summary."
             ),
         )
 
@@ -364,6 +368,10 @@ def main():
 
             # Update history for next round
             user_history.extend(new_messages)
+
+            # Generate and save round summary (for next round's dialogue_history_agent)
+            if i < len(questions):  # Not the last round
+                generate_and_save_round_summary(user, i, q, new_messages, llm_config)
 
             print(f"\n[ROUND {i} COMPLETED]\n")
 
