@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 import autogen
 from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
 import os
-from helpFunctions import load_all_questions, load_all_users, generate_and_save_round_summary
+from helpFunctions import load_all_questions, load_all_users
 from datetime import datetime
 from pathlib import Path
 import json
@@ -275,16 +275,17 @@ def main():
             code_execution_config=False,
         )
 
-        # Create wrapper that captures user_id for dialogue_history_agent
-        def make_dh_tool_wrapper(user_id: str):
+        # Create wrapper that captures user_id and llm_config for dialogue_history_agent
+        def make_dh_tool_wrapper(user_id: str, llm_cfg: dict):
             def wrapper(current_query: str):
                 return rag_search_for_dialogue_history_agent(
                     user_name=user_id,
-                    current_query=current_query
+                    current_query=current_query,
+                    llm_config=llm_cfg
                 )
             return wrapper
 
-        dh_wrapper = make_dh_tool_wrapper(user)
+        dh_wrapper = make_dh_tool_wrapper(user, llm_config)
 
         dialogue_history_agent.register_for_llm(
             name="rag_search_for_dialogue_history_agent",
@@ -393,10 +394,6 @@ def main():
 
             # Update history for next round
             user_history.extend(new_messages)
-
-            # Generate and save round summary (for next round's dialogue_history_agent)
-            if i < len(questions):  # Not the last round
-                generate_and_save_round_summary(user, i, q, new_messages, llm_config)
 
             print(f"\n[ROUND {i} COMPLETED]\n")
 

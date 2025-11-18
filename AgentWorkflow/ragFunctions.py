@@ -540,17 +540,71 @@ def load_previous_round_summaries(user_name: str, up_to_round: int) -> List[Dict
         print(f"[LOAD_SUMMARIES ERROR] {e}")
         return []
 
+def _generate_summary_for_round(round_data: dict, llm_config: dict) -> Optional[str]:
+    """
+    Generate a summary for a single round using LLM.
+
+    Args:
+        round_data: The round data from chat_history (contains conversation, user_query, round_number)
+        llm_config: LLM configuration for API call
+
+    Returns:
+        Summary string if successful, None otherwise
+    """
+    try:
+        round_num = round_data.get("round_number")
+        user_query = round_data.get("user_query", "")
+
+        # Extract all agent messages from conversation
+        agent_messages = []
+        for msg in round_data.get("conversation", []):
+            if msg.get("role") == "assistant":
+                agent_name = msg.get("agent", "").split("_")[0]  # Extract agent type
+                content = msg.get("content", "")
+                if content:
+                    agent_messages.append(f"{agent_name}: {content}")  # Full content, no truncation
+
+        if not agent_messages:
+            print(f"[SUMMARY_GEN] No agent messages found for Round {round_num}")
+            return None
+
+        # Build summary prompt
+        summary_prompt = (
+            f"Summarize Round {round_num} of the conversation in 2-3 concise sentences.\n\n"
+            f"User Query: {user_query}\n\n"
+            f"Agent Outputs:\n" + "\n\n".join(agent_messages) + "\n\n"
+            f"Summary (focus on: what user wanted, what was recommended, key preferences):"
+        )
+
+        # Call LLM to generate summary
+        import autogen
+        client = autogen.OpenAIWrapper(**llm_config)
+        response = client.create(messages=[{"role": "user", "content": summary_prompt}])
+        summary = response.choices[0].message.content if response.choices else None
+
+        if not summary:
+            print(f"[SUMMARY_GEN] LLM returned no summary for Round {round_num}")
+            return None
+
+        return summary
+
+    except Exception as e:
+        print(f"[SUMMARY_GEN ERROR] Failed to generate summary: {e}")
+        return None
+
 # Dialogue History Agent
-def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = None) -> dict:
+def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = None, llm_config: dict = None) -> dict:
     """
     Search for relevant dialogue history rounds using semantic similarity.
+    Also generates summaries for previous rounds that don't have them.
 
     Args:
         user_name: User identifier
         current_query: Current user query for similarity search (optional)
+        llm_config: LLM configuration for summary generation (optional)
 
     Returns:
-        dict with relative_rounds list
+        dict with relative_rounds list and previous_summaries
     """
     # Debug: Print received current_query
     print(f"[DEBUG] rag_search_for_dialogue_history_agent called")
@@ -563,8 +617,21 @@ def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = N
     all_rounds = list(_iter_jsonl(up["chat_history"]))
     print(f"[DEBUG] Found {len(all_rounds)} total rounds")
 
-    # Determine current round number and load previous summaries
+    # Determine current round number
     current_round_number = len(all_rounds)
+
+    # Incrementally generate summaries for all previous rounds that don't have them
+    if llm_config and len(all_rounds) > 1:
+        for round_data in all_rounds[:-1]:  # Exclude current round
+            round_num = round_data.get("round_number")
+            if not round_data.get("round_summary"):
+                print(f"[SUMMARY_GEN] Generating summary for Round {round_num}")
+                summary = _generate_summary_for_round(round_data, llm_config)
+                if summary:
+                    save_round_summary(user_name, round_num, summary)
+                    print(f"[SUMMARY_GEN] Successfully saved summary for Round {round_num}")
+
+    # Load all previous summaries (including newly generated ones)
     previous_summaries = load_previous_round_summaries(user_name, current_round_number)
     print(f"[DEBUG] Loaded {len(previous_summaries)} previous round summaries")
 
@@ -740,68 +807,3 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, top_k: int =
         "user_sampled_reviews": sampled_reviews_data.get("reviews", []) if sampled_reviews_data else [],
         "ts": _now(),
     }
-
-
-# Reason Agent 
-# def rag_search_for_reason_agent(user_name: str) -> dict:
-#     up = _user_paths(user_name)
-#     if not up["last_round"].exists():
-#         return {
-#             "explanation": "No prior recommendation context found for this user.",
-#             "user_query": "",
-#             "user_labels": [],
-#             "recommendations": [],
-#         }
-
-#     data = json.loads(up["last_round"].read_text(encoding="utf-8"))
-#     user_query = data.get("user_query", "")
-#     labels     = data.get("user_labels", [])
-#     recs       = data.get("recommendations", [])
-#     hist       = data.get("history_excerpt", [])
-#     engine     = data.get("engine", "Sentence-Transformers")
-#     dataset_category = data.get("dataset_category", DATASET_CATEGORY)
-#     fusion     = data.get("fusion", {})
-
-#     label_clause = ", ".join(labels) if labels else "general preferences inferred from history"
-#     why_bits = []
-#     for r in recs[:5]:
-#         parts = [r.get("title", "")]
-#         if r.get("brand"):
-#             parts.append(f"by {r['brand']}")
-#         why_bits.append(" ".join([p for p in parts if p]))
-
-#     explanation = (
-#         f"For catalog '{dataset_category}', based on the query \"{user_query}\" and labels ({label_clause}), "
-#         f"I retrieved products using a RAG retriever ({engine}) over item reviews. "
-#     )
-
-#     review_bits = []
-#     for r in recs[:3]:
-#         snippet = r.get("review")
-#         if snippet:
-#             review_bits.append(f"• {snippet}")
-
-#     if review_bits:
-#         explanation += "Some supporting user reviews:\n" + "\n".join(review_bits) + " "
-
-
-#     if fusion.get("user_profile_used"):
-#         explanation += (
-#             f"I combined similarity to the current query (weight {fusion.get('alpha_query', 0.7)}) "
-#             f"with similarity to the user's past purchases and reviews "
-#             f"(weight {fusion.get('beta_user_profile', 0.3)}). "
-#         )
-#     else:
-#         explanation += "User profile information was not available, so only query similarity was used. "
-
-#     if why_bits:
-#         explanation += "Top matches: " + "; ".join(why_bits) + ". "
-#     if hist:
-#         explanation += "Recent dialogue snippets considered: " + " | ".join(hist[:2]) + "."
-
-#     return {
-#         "explanation": explanation,
-#         "user_query": user_query,
-#         "user_labels": labels,
-#         "recommendations": recs,
-#     }
