@@ -301,29 +301,39 @@ def main():
             new_messages = groupchat.messages[prev_len:]
 
             # Save agent outputs to chat history
-            for msg in new_messages:
+            print(f"\n[DEBUG] Processing {len(new_messages)} new messages for Round {i}")
+            for idx, msg in enumerate(new_messages):
                 if not isinstance(msg, dict):
+                    print(f"[DEBUG] Message {idx}: Skipped (not a dict)")
                     continue
 
                 msg_name = msg.get("name", "")
                 msg_role = msg.get("role", "")
                 msg_content = msg.get("content", "")
 
+                print(f"[DEBUG] Message {idx}: name='{msg_name}', role='{msg_role}', content_length={len(str(msg_content))}")
+
                 # Skip tool messages
                 if msg_role in ("tool", "function"):
+                    print(f"[DEBUG] Message {idx}: Skipped (tool message)")
                     continue
 
                 # Skip empty messages
                 if not msg_content or str(msg_content).strip() in ("", "None"):
+                    print(f"[DEBUG] Message {idx}: Skipped (empty content)")
                     continue
 
                 # Skip user_proxy messages (already saved in line 296)
                 if msg_name == user_proxy_agent.name:
+                    print(f"[DEBUG] Message {idx}: Skipped (user_proxy)")
                     continue
 
                 # Save assistant agent outputs
                 if msg_name in [dialogue_history_agent.name, recommend_agent.name, reason_agent.name]:
+                    print(f"[DEBUG] Message {idx}: Saving to chat_history")
                     append_agent_message(msg_content, "assistant", msg_name, user)
+                else:
+                    print(f"[DEBUG] Message {idx}: Not in agent list, skipped")
 
             # Update history for next round
             user_history.extend(new_messages)
