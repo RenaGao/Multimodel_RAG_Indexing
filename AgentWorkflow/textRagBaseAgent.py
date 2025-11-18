@@ -28,12 +28,13 @@ class TeeLogger:
     def close(self):
         self.log.close()
 
-def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent):
+def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
     """
     Flow:
       User -> DialogueHistory (handles its tool call cycles)
            -> Recommender     (handles its tool call cycles)
            -> Reasoner        (handles its tool call cycles)
+           -> Reply           (generates final user response)
            -> End
     """
     def _last(gc):
@@ -53,7 +54,7 @@ def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent):
 
         if _has_tool_calls(last) or _is_tool_return(last):
             return last_speaker
-        
+
         if last_speaker is user_agent:
             return dh_agent
 
@@ -64,6 +65,9 @@ def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent):
             return rsn_agent
 
         if last_speaker is rsn_agent:
+            return reply_agent
+
+        if last_speaker is reply_agent:
             return None
 
         return user_agent
@@ -236,6 +240,30 @@ def main():
             ),
         )
 
+        reply_agent = AssistantAgent(
+            name=f"Reply_{user}_agent",
+            llm_config=llm_config,
+            system_message=(
+                "You are a Reply Agent. Your task is to generate a friendly, natural response "
+                "to the user based on the recommendations and reasoning provided by previous agents.\n\n"
+
+                "You will see in the conversation history:\n"
+                "1. The user's original query\n"
+                "2. The Dialogue History agent's summary\n"
+                "3. The Recommender agent's product recommendations\n"
+                "4. The Reasoner agent's explanation\n\n"
+
+                "Your response should:\n"
+                "- Acknowledge the user's request warmly\n"
+                "- Present the top 3-5 recommendations in a conversational way\n"
+                "- Highlight key features that match their needs\n"
+                "- Be friendly and concise (4-6 sentences)\n"
+                "- End with an offer to help further\n\n"
+
+                "DO NOT call any tools. Read the conversation and generate your reply."
+            ),
+        )
+
         user_proxy_agent = UserProxyAgent(
             name=f"User_{user}_proxy_agent",
             human_input_mode="NEVER",
@@ -285,10 +313,10 @@ def main():
             print(f"{'-'*80}\n")
 
             groupchat = GroupChat(
-                agents=[user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent],
+                agents=[user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent, reply_agent],
                 messages=[],  # Each round is independent; dialogue_history_agent uses RAG for history
                 max_round=10, # leave a number here
-                speaker_selection_method=make_simple_flow(user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent)
+                speaker_selection_method=make_simple_flow(user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent, reply_agent)
             )
 
             manager = GroupChatManager(groupchat=groupchat, llm_config=llm_config)
@@ -328,7 +356,7 @@ def main():
                     continue
 
                 # Save assistant agent outputs
-                if msg_name in [dialogue_history_agent.name, recommend_agent.name, reason_agent.name]:
+                if msg_name in [dialogue_history_agent.name, recommend_agent.name, reason_agent.name, reply_agent.name]:
                     print(f"[DEBUG] Message {idx}: Saving to chat_history")
                     append_agent_message(msg_content, "assistant", msg_name, user)
                 else:
