@@ -323,7 +323,7 @@ def main():
 
                 # Save assistant agent outputs
                 if msg_name in [dialogue_history_agent.name, recommend_agent.name, reason_agent.name]:
-                    append_agent_message(msg_content, "assistant", user)
+                    append_agent_message(msg_content, "assistant", msg_name, user)
 
             # Update history for next round
             user_history.extend(new_messages)

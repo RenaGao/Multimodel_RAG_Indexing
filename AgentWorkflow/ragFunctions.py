@@ -412,13 +412,14 @@ def save_chat_history(chat_history: str, user_name: str) -> bool:
         print(f"[SAVE ERROR] {e}")
         return False
 
-def append_agent_message(content: str, role: str, user_name: str) -> bool:
+def append_agent_message(content: str, role: str, agent_name: str, user_name: str) -> bool:
     """
     Append an agent message to the current round in chat history.
 
     Args:
         content: Message content
         role: Message role ("user" or "assistant")
+        agent_name: Name of the agent that generated this message
         user_name: User identifier
 
     Returns:
@@ -441,6 +442,7 @@ def append_agent_message(content: str, role: str, user_name: str) -> bool:
         # Update the last round
         last_round = all_rounds[-1]
         last_round["conversation"].append({
+            "agent": agent_name,
             "role": role,
             "content": content,
             "timestamp": _now()
