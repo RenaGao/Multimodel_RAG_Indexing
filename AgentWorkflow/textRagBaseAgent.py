@@ -164,6 +164,30 @@ def main():
     print(f"  Question file: {json_path}")
     print()
 
+    # Test API connection
+    print("\n[TEST] Testing OpenRouter API connection...")
+    try:
+        import requests
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {os.getenv('QWEN_API_KEY')}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "qwen/qwen3-8b",
+                "messages": [{"role": "user", "content": "test"}],
+                "max_tokens": 10
+            },
+            timeout=30
+        )
+        print(f"[TEST] API responded with status: {response.status_code}")
+        if response.status_code != 200:
+            print(f"[TEST] API Error: {response.text}")
+    except Exception as e:
+        print(f"[TEST] API Test Failed: {e}")
+    print()
+
     # Qwen3 VL 8B Instruct
     llm_config = {
             "config_list": [{
@@ -171,8 +195,11 @@ def main():
                 "model": "qwen/qwen3-8b", # use this since all text only
                 "api_key": os.getenv("QWEN_API_KEY"),
                 "base_url": "https://openrouter.ai/api/v1",
-                "price": [0.001, 0.002] # remove autogen price warning
-            }]
+                "price": [0.001, 0.002], # remove autogen price warning
+                "timeout": 120,  # 2 minutes timeout
+            }],
+            "timeout": 120,
+            "cache_seed": None,  # Disable caching for debugging
         }
 
     for user in selected_users:
@@ -187,22 +214,17 @@ def main():
             system_message=(
                     "You are a Dialogue History Agent. "
                     "Your task has exactly two steps and must stop after completing them:\n"
-
                     "Step 1: Immediately call the tool 'rag_search_for_dialogue_history_agent' once "
                     f"to retrieve past dialogue and preference information for the user '{user}'. "
                     "When calling this tool, you MUST pass the current user's query from the conversation as the 'current_query' parameter "
                     "to find semantically similar past interactions.\n"
-
-                    "Step 2: Using the tool result, generate a concise summary:\n"
-                    "  - If 'relative_rounds' is EMPTY (empty list) or contains no data: "
-                    "Simply state 'No previous dialogue history available for this user.' and END your turn immediately.\n"
-                    "  - If 'relative_rounds' contains data: "
-                    "Summarize the user's preferences and past interactions based on the retrieved information.\n\n"
-
+                    "Step 2: Using only the tool result, generate concise summary of preferences. "
                     "Do not call any other tools, and do not produce any response before the tool result is obtained. "
                     "End your turn after generating the final response."
             ),
         )
+
+        print(f"[DEBUG] Dialogue_History_agent created for user: {user}")
 
         recommend_agent = AssistantAgent(
             name=f"Recommender_{user}_agent",
@@ -283,6 +305,8 @@ def main():
         dialogue_history_agent.register_for_execution(
             name="rag_search_for_dialogue_history_agent"
         )(rag_search_for_dialogue_history_agent)
+
+        print(f"[DEBUG] Tool 'rag_search_for_dialogue_history_agent' registered for {user}")
 
         recommend_agent.register_for_llm(
             name="rag_search_for_recommend_agent",
