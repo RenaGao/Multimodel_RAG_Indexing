@@ -71,11 +71,13 @@ def generate_and_save_round_summary(
         # Extract agent outputs for summarization
         agent_contents = []
         for msg in round_messages:
-            if msg.get("role") == "assistant" and msg.get("content"):
-                agent_name = msg.get("name", "").split("_")[0]  # Extract agent type
-                content = msg.get("content", "")
-                if content:
-                    agent_contents.append(f"{agent_name}: {content[:300]}")
+            msg_name = msg.get("name", "")
+            content = msg.get("content", "")
+
+            # Filter by agent name instead of role (AutoGen may use role='user' for agent responses)
+            if msg_name and content and any(agent_type in msg_name for agent_type in ["Dialogue_History", "Recommender", "Reasoner", "Reply"]):
+                agent_name = msg_name.split("_")[0]  # Extract agent type
+                agent_contents.append(f"{agent_name}: {content[:300]}")
 
         if not agent_contents:
             print(f"[SUMMARY] No agent outputs found for Round {round_number}")
