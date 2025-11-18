@@ -82,7 +82,7 @@ def _sample_user_reviews(user_name: str, num_reviews: int = 5) -> Optional[Dict]
         Dict with sampled review data or None if user not found
     """
     # Path to user data file (in project root)
-    user_data_path = Path("../../Amazon_Fashion_top_100_user_data.json")
+    user_data_path = Path("/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/Amazon_Fashion_top_100_user_data.json")
 
     if not user_data_path.exists():
         print(f"[SAMPLE_REVIEWS] User data file not found: {user_data_path}")
