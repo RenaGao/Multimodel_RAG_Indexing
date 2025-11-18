@@ -28,7 +28,7 @@ for p in [VSTORE_DIR, CATALOG_DIR, USERS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 def item_index_dir() -> Path:
-    return CATALOG_DIR / DATASET_CATEGORY / "item_index_v2_qwen3"
+    return CATALOG_DIR / DATASET_CATEGORY / "item_index_qwen3"
 
 def _now() -> str:
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"

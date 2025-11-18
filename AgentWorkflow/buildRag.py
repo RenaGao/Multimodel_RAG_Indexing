@@ -40,7 +40,6 @@ def construct_item_search_text(
     all_item_reviews: List[dict],
     max_reviews: int = 20
 ) -> str:
-    # TODO: Add Details tag!
     """
     Construct text for embedding from product metadata and reviews
     (Copied from fashion_rag_index.py)
@@ -78,6 +77,13 @@ def construct_item_search_text(
             if desc_text:
                 text_parts.append(f"Description: {desc_text}")
 
+        # Details
+        details = product_meta.get('details', {})
+        if details and isinstance(details, dict):
+            details_text = ' '.join([f"{k}: {v}" for k, v in details.items() if v])
+            if details_text:
+                text_parts.append(f"Details: {details_text}")
+
         # Categories
         categories = product_meta.get('categories', [])
         if categories and isinstance(categories, list):
@@ -114,39 +120,6 @@ def load_json(path: Path):
     txt = path.read_text(encoding="utf-8")
     txt = txt.replace("NaN", "null")
     return json.loads(txt)
-
-def calculate_item_avg_ratings(item_review_data: dict) -> Dict[str, float]:
-    """
-    Calculate average rating for each item from item_review_data
-
-    Args:
-        item_review_data: dict with structure {parent_asin: [review_list]}
-
-    Returns:
-        dict: {parent_asin: avg_rating}
-    """
-    item_avg_ratings = {}
-
-    for parent_asin, reviews in item_review_data.items():
-        if not isinstance(reviews, list):
-            continue
-
-        ratings = []
-        for review in reviews:
-            if isinstance(review, dict):
-                rating = review.get("rating")
-                if rating is not None:
-                    try:
-                        ratings.append(float(rating))
-                    except (ValueError, TypeError):
-                        pass
-
-        if ratings:
-            item_avg_ratings[parent_asin] = sum(ratings) / len(ratings)
-        else:
-            item_avg_ratings[parent_asin] = None
-
-    return item_avg_ratings
 
 def calculate_item_review_counts(item_review_data: dict) -> Dict[str, int]:
     """
@@ -218,97 +191,13 @@ class Embedder:
             convert_to_tensor=False
         )
 
-def normalize_item_docs_from_itemReview_v1(
-    all_users: Any,
-    item_avg_ratings: Dict[str, float],
-    item_review_counts: Dict[str, int]
-) -> List[Dict[str, Any]]:
-    """
-    V1: One document per review, using item average rating and total review count from item_review_file
-    """
-    docs: List[Dict[str, Any]] = []
-    if all_users is None:
-        return docs
-
-    if isinstance(all_users, dict):
-        user_items = list(all_users.items())
-    else:
-        user_items = list(enumerate(all_users))
-
-    for user_id, blocks in tqdm(user_items, desc="Processing users (v1)"):
-        if not isinstance(blocks, list):
-            continue
-
-        for block in blocks:
-            if not isinstance(block, list) or len(block) == 0:
-                continue
-
-            meta = block[0] if isinstance(block[0], dict) else None
-            if not meta:
-                continue
-
-            product_title = meta.get("title", "") or ""
-            parent_asin = meta.get("parent_asin")
-            store = meta.get("store", "") or ""
-            details = meta.get("details") or {}
-            brand = details.get("Brand") or meta.get("brand") or store
-            price = meta.get("price")
-
-            reviews_part = block[1:]
-            if len(reviews_part) == 1 and isinstance(reviews_part[0], list):
-                reviews = reviews_part[0]
-            else:
-                reviews = reviews_part
-
-            if not isinstance(reviews, list):
-                continue
-
-            for rv in reviews:
-                if not isinstance(rv, dict):
-                    continue
-
-                review_parent_asin = rv.get("parent_asin") or parent_asin
-                review_title = rv.get("title") or ""
-                review_text = rv.get("text") or ""
-
-                full_text = " ".join([
-                    norm(review_title),
-                    norm(review_text),
-                ]).strip()
-
-                if not full_text:
-                    continue
-
-                # Use parent_asin as item_id
-                item_id = parent_asin or f"ITEM_{len(docs)+1}"
-                doc_id = f"item::{item_id}::{_hash_bytes(full_text.encode('utf-8'))[:8]}"
-
-                # Use item average rating and review count from item_review_file (keyed by parent_asin)
-                avg_rating = item_avg_ratings.get(item_id)
-                num_reviews = item_review_counts.get(item_id, 0)
-
-                docs.append({
-                    "doc_id": doc_id,
-                    "item_id": item_id,
-                    "title": norm(product_title),
-                    "brand": norm(brand),
-                    "price": norm(price),
-                    "rating": avg_rating,
-                    "num_reviews": num_reviews,  # Total reviews from item_review_file
-                    "text": full_text,
-                    "source": "user_data_review",
-                })
-
-    return docs
-
 def build_review_embeddings_v2(
     item_review_data: dict,
     doc_order: List[str],
     embedder
 ) -> np.ndarray:
-    # TODO: Remove target_product review!
     """
-    Generate average review embeddings for each item in v2
+    Generate average review embeddings for each item
 
     Args:
         item_review_data: dict with structure {parent_asin: [review_list]}
@@ -347,26 +236,24 @@ def build_review_embeddings_v2(
 
     return np.array(review_embeddings, dtype=np.float32)
 
-def normalize_item_docs_from_itemReview_v2(
+def normalize_item_docs_from_itemReview(
     item_review_data: dict,
-    item_meta_map: Dict[str, dict],
-    item_avg_ratings: Dict[str, float]
+    item_meta_map: Dict[str, dict]
 ) -> List[Dict[str, Any]]:
     """
-    V2: Create one document per item using only product metadata (no reviews)
+    Create one document per item using only product metadata (no reviews)
     Uses item_review_data as primary source and item_meta_map for metadata
 
     Args:
         item_review_data: dict with structure {parent_asin: [review_list]}
         item_meta_map: dict with structure {parent_asin: product_meta}
-        item_avg_ratings: dict with structure {parent_asin: avg_rating}
 
     Returns:
         List of document dicts
     """
     docs: List[Dict[str, Any]] = []
 
-    for parent_asin, reviews in tqdm(item_review_data.items(), desc="Processing items (v2)"):
+    for parent_asin, reviews in tqdm(item_review_data.items(), desc="Processing items"):
         if not isinstance(reviews, list) or len(reviews) == 0:
             continue
 
@@ -380,17 +267,16 @@ def normalize_item_docs_from_itemReview_v2(
         product_title = ""
         brand = ""
         price = ""
-        
-        # TODO: Details add to full_text!!!
+        avg_rating = None
+
         if product_meta:
             product_title = product_meta.get("title", "") or ""
             store = product_meta.get("store", "") or ""
             details = product_meta.get("details") or {}
             brand = details.get("Brand") or product_meta.get("brand") or store
             price = product_meta.get("price")
-
-        # Get pre-calculated average rating (keyed by parent_asin)
-        avg_rating = item_avg_ratings.get(parent_asin)
+            # Get average rating from product metadata
+            avg_rating = product_meta.get("average_rating")
 
         doc_id = f"item::{parent_asin}"
 
@@ -403,27 +289,24 @@ def normalize_item_docs_from_itemReview_v2(
             "rating": avg_rating,
             "num_reviews": len(reviews),
             "text": full_text,
-            "source": "item_review_metadata_only",
         })
 
     return docs
 
-def build_item_index_for_category(category: str, version: str = "v1"):
+def build_item_index_for_category(category: str):
     """
     Build item index for a category
+    Creates one document per item using product metadata only
 
     Args:
         category: Category name (e.g., "Amazon_Fashion")
-        version: Version of text normalization to use ("v1" or "v2")
-                 v1: One document per review (includes review text)
-                 v2: One document per item (only product metadata, no reviews)
     """
-    # Create version and model-specific directory
+    # Create model-specific directory
     model_suffix = "qwen3"
-    item_dir = CATALOG_DIR / category / f"item_index_{version}_{model_suffix}"
+    item_dir = CATALOG_DIR / category / f"item_index_{model_suffix}"
     item_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n[INFO] Building index with version: {version}, model: {model_suffix}")
+    print(f"\n[INFO] Building item index with model: {model_suffix}")
     print(f"[INFO] Output directory: {item_dir}")
 
     # Load data files
@@ -436,29 +319,14 @@ def build_item_index_for_category(category: str, version: str = "v1"):
     item_review_data = load_json(item_review_file)
     # Note: item_review_data keys are already parent_asin
 
-    # Calculate item statistics from item_review_file
-    print(f"[INFO] Calculating average ratings for each item...")
-    item_avg_ratings = calculate_item_avg_ratings(item_review_data)
-    print(f"[INFO] Calculated ratings for {len(item_avg_ratings)} items")
-
-    print(f"[INFO] Calculating review counts for each item...")
-    item_review_counts = calculate_item_review_counts(item_review_data)
-    print(f"[INFO] Calculated review counts for {len(item_review_counts)} items")
-
     # Build item metadata map from user_data
     print(f"[INFO] Building item metadata map...")
     item_meta_map = build_item_meta_map(all_users)
     print(f"[INFO] Extracted metadata for {len(item_meta_map)} items")
 
-    # Choose normalization function based on version
-    if version == "v1":
-        print(f"[INFO] Running v1: One doc per review with item avg ratings and review counts")
-        docs = normalize_item_docs_from_itemReview_v1(all_users, item_avg_ratings, item_review_counts)
-    elif version == "v2":
-        print(f"[INFO] Running v2: One doc per item (metadata only) with avg ratings")
-        docs = normalize_item_docs_from_itemReview_v2(item_review_data, item_meta_map, item_avg_ratings)
-    else:
-        raise ValueError(f"Unknown version: {version}. Use 'v1' or 'v2'")
+    # Build one document per item (metadata only)
+    print(f"[INFO] Building item documents (one per item, metadata only)")
+    docs = normalize_item_docs_from_itemReview(item_review_data, item_meta_map)
 
     if not docs:
         print(f"[WARN] No docs built for category={category}")
@@ -472,18 +340,27 @@ def build_item_index_for_category(category: str, version: str = "v1"):
         json.dump(docs, f, ensure_ascii=False, indent=2)
     print(f"[SAVE] normalized docs -> {normalized_docs_path}")
 
-    texts = [d["title"] + " " + d["text"] for d in docs]
+    # Encode all fields as text
+    texts = [
+        " ".join(filter(None, [
+            d["title"],
+            d["brand"],
+            d["price"],
+            f"Rating: {d['rating']}" if d.get("rating") is not None else "",
+            f"Reviews: {d['num_reviews']}",
+            d["text"]
+        ]))
+        for d in docs
+    ]
 
     embedder_instance = Embedder()
     emb = embedder_instance.encode(texts, batch_size=16)
 
-    # For v2: also generate review embeddings
-    if version == "v2":
-        print(f"[INFO] Generating review embeddings for v2...")
-        # Get doc order (parent_asins)
-        doc_order = [d["item_id"] for d in docs]
-        review_emb = build_review_embeddings_v2(item_review_data, doc_order, embedder_instance)
-        print(f"[INFO] Generated review embeddings: {review_emb.shape}")
+    # Generate review embeddings
+    print(f"[INFO] Generating review embeddings...")
+    doc_order = [d["item_id"] for d in docs]
+    review_emb = build_review_embeddings_v2(item_review_data, doc_order, embedder_instance)
+    print(f"[INFO] Generated review embeddings: {review_emb.shape}")
 
     meta_path = item_dir / "meta.pkl"
     matrix_path = item_dir / "matrix.pkl"
@@ -496,12 +373,11 @@ def build_item_index_for_category(category: str, version: str = "v1"):
     with matrix_path.open("wb") as f:
         pickle.dump(emb, f)
 
-    # For v2: save review embeddings separately
-    if version == "v2":
-        review_matrix_path = item_dir / "review_matrix.pkl"
-        with review_matrix_path.open("wb") as f:
-            pickle.dump(review_emb, f)
-        print(f"[SAVE] review embeddings -> {review_matrix_path}")
+    # Save review embeddings
+    review_matrix_path = item_dir / "review_matrix.pkl"
+    with review_matrix_path.open("wb") as f:
+        pickle.dump(review_emb, f)
+    print(f"[SAVE] review embeddings -> {review_matrix_path}")
 
     with embedder_path.open("wb") as f:
         pickle.dump({"kind": "sbert", "model": "Qwen/Qwen3-Embedding-8B", "dimension": 4096}, f)
@@ -598,8 +474,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Build RAG index for Amazon product data")
     parser.add_argument("--category", help="e.g. All_Beauty or Amazon_Fashion")
     parser.add_argument("--all", action="store_true", help="Build index for all available categories")
-    parser.add_argument("--version", default="v1", choices=["v1", "v2"],
-                        help="Version of text normalization: v1 (one doc per review), v2 (one doc per item, metadata only)")
 
     args = parser.parse_args()
 
@@ -615,9 +489,9 @@ if __name__ == "__main__":
 
         else:
             for cat, fname in sorted(cat2file.items()):
-                print(f"\n===== Building item index for category: {cat} (from {fname}) [Version: {args.version}] =====")
-                build_item_index_for_category(cat, version=args.version)
+                print(f"\n===== Building item index for category: {cat} (from {fname}) =====")
+                build_item_index_for_category(cat)
 
     elif args.category:
-        print(f"\n===== Building item index for category: {args.category} [Version: {args.version}] =====")
-        build_item_index_for_category(args.category, version=args.version)
+        print(f"\n===== Building item index for category: {args.category} =====")
+        build_item_index_for_category(args.category)

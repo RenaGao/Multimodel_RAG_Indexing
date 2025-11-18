@@ -264,8 +264,6 @@ def main():
     parser = argparse.ArgumentParser(description="Create t-SNE visualizations for item embeddings")
     parser.add_argument("--category", help="Category name (e.g., Amazon_Fashion)")
     parser.add_argument("--path", help="Direct path to item_index directory")
-    parser.add_argument("--version", choices=["v1", "v2"], default="v2",
-                        help="Version of index to visualize (default: v2)")
     parser.add_argument("--model", default="",
                         help="Model suffix (e.g., 'qwen3' for _qwen3, '' for no suffix/default model) (default: '')")
     parser.add_argument("--perplexity", type=int, default=30, help="t-SNE perplexity (default: 30)")
@@ -279,33 +277,25 @@ def main():
         index_dir = Path(args.path)
     elif args.category:
         model_suffix = f"_{args.model}" if args.model else ""
-        index_dir = CATALOG_DIR / args.category / f"item_index_{args.version}{model_suffix}"
+        index_dir = CATALOG_DIR / args.category / f"item_index{model_suffix}"
     else:
-        # Use default path based on version
+        # Use default path
         base_path = "/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Multimodel_RAG_Indexing/AgentWorkflow/storage/vectorstore/catalog/Amazon_Fashion"
         model_suffix = f"_{args.model}" if args.model else ""
-        index_dir = Path(base_path) / f"item_index_{args.version}{model_suffix}"
+        index_dir = Path(base_path) / f"item_index{model_suffix}"
 
     if not index_dir.exists():
         print(f"Error: Index directory not found: {index_dir}")
         return
 
-    # Detect version from path
-    if "item_index_v1" in str(index_dir):
-        version_str = "v1"
-    elif "item_index_v2" in str(index_dir):
-        version_str = "v2"
-    else:
-        version_str = args.version
-
-    # Set output directory based on version and model
+    # Set output directory based on model
     if args.output_dir:
         output_dir = Path(args.output_dir)
     else:
         if args.model:
-            output_dir = Path(f"./tsne_outputs_{version_str}_{args.model}")
+            output_dir = Path(f"./tsne_outputs_{args.model}")
         else:
-            output_dir = Path(f"./tsne_outputs_{version_str}")
+            output_dir = Path(f"./tsne_outputs")
     output_dir.mkdir(exist_ok=True, parents=True)
 
     category_name = args.category or "Amazon_Fashion"
@@ -324,10 +314,7 @@ def main():
     print(f"\nGenerating visualizations for metadata embeddings...")
 
     # File prefix for metadata embeddings
-    if version_str == "v2":
-        prefix = f"{category_name}_metadata"
-    else:
-        prefix = f"{category_name}"
+    prefix = f"{category_name}_metadata"
 
     # Create various plots for metadata embeddings
     plot_basic_tsne(
