@@ -535,7 +535,7 @@ if __name__ == "__main__":
     parser.add_argument("--all", action="store_true", help="Build index for all available categories")
     parser.add_argument(
         "--questions-file",
-        default="../questions/Amazon_Fashion_questions_20251110_214618.json",
+        default="/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/questions/Amazon_Fashion_questions_20251110_214618.json",
         help="Path to questions JSON file for excluding target product reviews (default: ../questions/Amazon_Fashion_questions_20251110_214618.json)"
     )
 
