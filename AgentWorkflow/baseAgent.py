@@ -57,7 +57,7 @@ def main():
     for user in selected_users:
         questions = all_questions_dict[user]
         if per_user_limit:
-            questions = questions[:2]
+            questions = questions[:per_user_limit]
 
         # separate agent based on category
         dialogue_history_agent = AssistantAgent(
@@ -189,18 +189,13 @@ def main():
             # Extract ONLY new messages from this round
             new_msgs = groupchat.messages[old_history_len:]
 
-            print(f"\n[DEBUG Round {i}] Extracted {len(new_msgs)} new messages from this round")
-
             # Extract reply agent response for evaluation
             reply_content = None
             for msg in new_msgs:
                 if isinstance(msg, dict):
                     msg_name = msg.get("name", "")
-                    msg_role = msg.get("role", "")
-                    print(f"[DEBUG] Checking message: name='{msg_name}', role='{msg_role}'")
                     if "Reply" in msg_name:
                         reply_content = msg.get("content", "")
-                        print(f"[DEBUG] Found Reply agent message! Content length: {len(reply_content)}")
                         break
 
             # Add to eval data
@@ -208,21 +203,13 @@ def main():
                 eval_dialogue_history.append({"role": "user", "content": q})
                 eval_dialogue_history.append({"role": "assistant", "content": reply_content})
                 user_queries.append(q)
-                print(f"[DEBUG] Added to eval data. Total queries so far: {len(user_queries)}")
-            else:
-                print(f"[DEBUG] WARNING: No reply_content found for round {i}!")
 
             category_history.extend(new_msgs)
 
         results[user] = category_history
 
-        print(f"\n[DEBUG] After all rounds for user {user}:")
-        print(f"[DEBUG] Total user_queries collected: {len(user_queries)}")
-        print(f"[DEBUG] Total eval_dialogue_history entries: {len(eval_dialogue_history)}")
-
         # Generate evaluation export
         if user_queries:
-            print(f"[DEBUG] Entering export block...")
             num_queries = len(user_queries)
             query_summary = ", ".join([f"({i+1}) {q}" for i, q in enumerate(user_queries)])
             user_goal = f"Multi-round shopping session with {num_queries} queries: {query_summary}"
@@ -242,8 +229,7 @@ def main():
                 json.dump([eval_entry], f, ensure_ascii=False, indent=2)
 
             print(f"[EXPORT] Evaluation data saved to: {eval_path}")
-        else:
-            print(f"[DEBUG] WARNING: user_queries is empty, skipping export!")
+
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path("./")
     out_dir.mkdir(parents=True, exist_ok=True)
