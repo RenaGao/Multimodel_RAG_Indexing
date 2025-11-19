@@ -181,17 +181,12 @@ def main():
 
             manager = GroupChatManager(groupchat=groupchat, llm_config=llm_config)
 
-            # Track length before chat to extract only new messages
-            old_history_len = len(category_history)
-            print(f"[DEBUG Round {i}] BEFORE chat: category_history has {old_history_len} messages")
-
             user_proxy_agent.initiate_chat(manager, message=q)
 
-            print(f"[DEBUG Round {i}] AFTER chat: groupchat.messages has {len(groupchat.messages)} total messages")
-
-            # Extract ONLY new messages from this round
-            new_msgs = groupchat.messages[old_history_len:]
-            print(f"[DEBUG Round {i}] Slicing [{old_history_len}:] gives {len(new_msgs)} new messages")
+            # Extract all messages from this round's GroupChat
+            # Note: groupchat.messages only contains current round messages (autogen resets it)
+            new_msgs = groupchat.messages[:]
+            print(f"[DEBUG Round {i}] Extracted {len(new_msgs)} messages from current round")
 
             # Extract reply agent response for evaluation
             reply_content = None
