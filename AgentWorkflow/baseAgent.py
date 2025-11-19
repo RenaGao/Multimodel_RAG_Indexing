@@ -181,9 +181,13 @@ def main():
 
             manager = GroupChatManager(groupchat=groupchat, llm_config=llm_config)
 
+            # Track length before chat to extract only new messages
+            old_history_len = len(category_history)
+
             user_proxy_agent.initiate_chat(manager, message=q)
 
-            new_msgs = groupchat.messages[:]
+            # Extract ONLY new messages from this round
+            new_msgs = groupchat.messages[old_history_len:]
 
             # Extract reply agent response for evaluation
             reply_content = None
