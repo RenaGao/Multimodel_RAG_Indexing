@@ -11,6 +11,10 @@ import argparse
 from tqdm import tqdm
 from openai import OpenAI
 import time
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # -----------------------------------
 # Configuration
@@ -23,7 +27,11 @@ SLEEP_TIME = 1.5
 # -----------------------------------
 # Initialize OpenAI client
 # -----------------------------------
-client = OpenAI()
+api_key = os.getenv("OPENAI_KEY")
+if not api_key:
+    raise ValueError("Missing OPENAI_KEY in environment variables. Please add it to your .env file.")
+
+client = OpenAI(api_key=api_key)
 
 # -----------------------------------
 # LLM evaluation prompt template
