@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 import json
 import sys
-from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, append_agent_message, save_round_summary
+from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, append_agent_message, save_round_summary, load_previous_round_summaries, get_current_round_number
 
 # Custom logger class to capture all print outputs
 class TeeLogger:
@@ -240,7 +240,7 @@ def main():
                 "2. Explain clearly and concisely WHY the recommendation was produced.\n"
                 "3. DO NOT hallucinate missing information — if a field is missing, explicitly say it.\n"
                 "4. DO NOT use or reference any information from previous rounds.\n\n"
-                
+
                 "End your turn after producing the explanation."
             ),
         )
@@ -252,22 +252,74 @@ def main():
                 "You are a Reply Agent. Your task is to generate a friendly, natural response "
                 "to the user based on the recommendations and reasoning provided by previous agents.\n\n"
 
-                "You will see in the conversation history:\n"
+                "STEP 1: Immediately and automatically call the tool 'get_previous_round_summaries' ONCE. "
+                "This tool requires NO parameters (user_name and round_number are automatically provided).\n"
+                "The tool returns a list of summaries from all previous rounds in THIS conversation session.\n\n"
+
+                "STEP 2: Based on the tool result, determine if this is a continuation:\n"
+                "- If the tool returns an EMPTY list or NO previous summaries: This is the FIRST round.\n"
+                "  Use a friendly greeting like 'Hey there!' or 'Hi!' to welcome the user.\n"
+                "- If the tool returns previous summaries: This is a CONTINUATION of an ongoing conversation.\n"
+                "  Acknowledge the context naturally using phrases like 'Based on what we discussed earlier...', "
+                "'Following up on your previous question...', or 'Continuing from where we left off...'.\n"
+                "  DO NOT use generic greetings like 'Hey there!' or 'Hi!' in continuation rounds.\n\n"
+
+                "STEP 3: You will see in the current round's conversation history:\n"
                 "1. The user's original query\n"
                 "2. The Dialogue History agent's summary\n"
                 "3. The Recommender agent's product recommendations\n"
                 "4. The Reasoner agent's explanation\n\n"
 
-                "Your response should:\n"
-                "- Acknowledge the user's request warmly\n"
+                "STEP 4: Generate your final response. Your response should:\n"
+                "- Use appropriate greeting based on whether this is first round or continuation (see STEP 2)\n"
                 "- Present the top 3-5 recommendations in a conversational way\n"
                 "- Highlight key features that match their needs\n"
                 "- Be friendly and concise (4-6 sentences)\n"
+                "- If relevant and natural, reference previous conversations (but don't force it)\n"
                 "- End with an offer to help further\n\n"
 
-                "DO NOT call any tools. Read the conversation and generate your reply."
+                "End your turn immediately after generating the response."
             ),
         )
+
+        # Create wrapper that captures user_id for reply_agent and auto-detects round number
+        def make_reply_tool_wrapper(user_id: str):
+            def wrapper():
+                # Auto-detect current round number at execution time
+                current_round = get_current_round_number(user_id)
+                summaries = load_previous_round_summaries(user_id, current_round)
+
+                if not summaries:
+                    return {
+                        "user_name": user_id,
+                        "current_round": current_round,
+                        "previous_summaries": [],
+                        "message": "This is the first round. No previous conversation history exists."
+                    }
+                return {
+                    "user_name": user_id,
+                    "current_round": current_round,
+                    "previous_summaries": summaries,
+                    "message": f"Found {len(summaries)} previous round(s) of conversation."
+                }
+            return wrapper
+
+        reply_wrapper = make_reply_tool_wrapper(user)
+
+        reply_agent.register_for_llm(
+            name="get_previous_round_summaries",
+            description=(
+                "Retrieve summaries of all previous rounds in this conversation session. "
+                "Use this to determine if this is a continuation and to understand the conversation context. "
+                "No parameters required (user_name and round_number are automatically provided)."
+            ),
+        )(reply_wrapper)
+
+        reply_agent.register_for_execution(
+            name="get_previous_round_summaries"
+        )(reply_wrapper)
+
+        print(f"[DEBUG] Tool 'get_previous_round_summaries' registered for {user}")
 
         user_proxy_agent = UserProxyAgent(
             name=f"User_{user}_proxy_agent",

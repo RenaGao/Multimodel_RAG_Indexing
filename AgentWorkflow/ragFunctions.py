@@ -502,6 +502,29 @@ def save_round_summary(user_name: str, round_number: int, summary: str) -> bool:
         print(f"[SAVE_SUMMARY ERROR] {e}")
         return False
 
+def get_current_round_number(user_name: str) -> int:
+    """
+    Determine the current round number by counting rounds in chat_history.
+
+    Args:
+        user_name: User identifier
+
+    Returns:
+        Current round number (1-indexed). Returns 1 if no history exists.
+    """
+    try:
+        up = _user_paths(user_name)
+
+        if not up["chat_history"].exists():
+            return 1
+
+        all_rounds = list(_iter_jsonl(up["chat_history"]))
+        return len(all_rounds)
+
+    except Exception as e:
+        print(f"[GET_CURRENT_ROUND ERROR] {e}")
+        return 1  # Default to round 1 on error
+
 def load_previous_round_summaries(user_name: str, up_to_round: int) -> List[Dict]:
     """
     Load all round summaries up to (but not including) a specific round.
