@@ -216,7 +216,7 @@ def main():
 
             # Save eval file
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            eval_path = f"eval_dialogues_{user}_{timestamp}.json"
+            eval_path = f"baseline_eval_dialogues_{user}_{timestamp}.json"
             with open(eval_path, "w", encoding="utf-8") as f:
                 json.dump([eval_entry], f, ensure_ascii=False, indent=2)
 
