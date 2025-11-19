@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
 import os
-from helpFunctions import load_all_users_and_questions
+from helpFunctions import load_all_questions, load_all_users
 from datetime import datetime
 from pathlib import Path
 import json
@@ -31,11 +31,13 @@ def main():
 
     # question json file path
     # TODO: need this format of question list
-    json_path = "../questions/Beauty_and_Personal_Care_questions_20251110_211933.json"
+    json_path = "../questions/Amazon_Fashion_questions_20251110_214618.json"
 
-    all_questions_dict, all_users_list = load_all_users_and_questions(json_path)
+    all_questions_dict = load_all_questions(json_path)
 
-    selected_users = all_users_list[:]
+    all_users_list = load_all_users(json_path)
+
+    selected_users = all_users_list[:1]
     
     # how many questions can run for one user
     per_user_limit = None # run all questions from the user
@@ -45,7 +47,7 @@ def main():
 
     llm_config = {
             "config_list": [{
-                "model": "qwen/qwen3-vl-8b-instruct",
+                "model": "qwen/qwen3-8b", # use this since all text only
                 "api_key": os.getenv("QWEN_API_KEY"),
                 "base_url": "https://openrouter.ai/api/v1",
                 "price": [0.001, 0.002] # remove autogen price warning
