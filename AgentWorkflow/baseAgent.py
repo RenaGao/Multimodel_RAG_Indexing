@@ -188,6 +188,7 @@ def main():
 
             # Extract ONLY new messages from this round
             new_msgs = groupchat.messages[old_history_len:]
+            print(f"[DEBUG Round {i}] old_history_len={old_history_len}, new_msgs count={len(new_msgs)}")
 
             # Extract reply agent response for evaluation
             reply_content = None
@@ -198,11 +199,16 @@ def main():
                         reply_content = msg.get("content", "")
                         break
 
+            print(f"[DEBUG Round {i}] reply_content found: {reply_content is not None}, length: {len(reply_content) if reply_content else 0}")
+
             # Add to eval data
             if reply_content:
                 eval_dialogue_history.append({"role": "user", "content": q})
                 eval_dialogue_history.append({"role": "assistant", "content": reply_content})
                 user_queries.append(q)
+                print(f"[DEBUG Round {i}] Added to eval. Total queries: {len(user_queries)}")
+            else:
+                print(f"[DEBUG Round {i}] WARNING: reply_content is None, NOT added to eval!")
 
             category_history.extend(new_msgs)
 
