@@ -198,7 +198,7 @@ def main():
                     msg_name = msg.get("name", "")
                     msg_role = msg.get("role", "")
                     print(f"[DEBUG] Checking message: name='{msg_name}', role='{msg_role}'")
-                    if "Reply" in msg_name and msg.get("role") == "assistant":
+                    if "Reply" in msg_name:
                         reply_content = msg.get("content", "")
                         print(f"[DEBUG] Found Reply agent message! Content length: {len(reply_content)}")
                         break
