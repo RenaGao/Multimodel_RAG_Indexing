@@ -183,12 +183,15 @@ def main():
 
             # Track length before chat to extract only new messages
             old_history_len = len(category_history)
+            print(f"[DEBUG Round {i}] BEFORE chat: category_history has {old_history_len} messages")
 
             user_proxy_agent.initiate_chat(manager, message=q)
 
+            print(f"[DEBUG Round {i}] AFTER chat: groupchat.messages has {len(groupchat.messages)} total messages")
+
             # Extract ONLY new messages from this round
             new_msgs = groupchat.messages[old_history_len:]
-            print(f"[DEBUG Round {i}] old_history_len={old_history_len}, new_msgs count={len(new_msgs)}")
+            print(f"[DEBUG Round {i}] Slicing [{old_history_len}:] gives {len(new_msgs)} new messages")
 
             # Extract reply agent response for evaluation
             reply_content = None
