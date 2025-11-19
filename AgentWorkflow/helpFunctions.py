@@ -50,10 +50,10 @@ def load_all_users_and_questions(json_path: str) -> tuple[dict, list]:
 
 def export_dialogues_for_eval(user_name: str, output_path: str = None) -> str:
     """
-    Export user-reply dialogues for evaluation.
+    Export complete multi-round dialogue for evaluation.
 
-    Reads chat_history.jsonl and extracts each round's user query and reply agent response
-    in the format expected by Eval_Agents_Responses.py.
+    Reads chat_history.jsonl and combines all rounds into a single dialogue entry
+    with cumulative user queries and reply agent responses.
 
     Args:
         user_name: User identifier
@@ -78,8 +78,9 @@ def export_dialogues_for_eval(user_name: str, output_path: str = None) -> str:
             print(f"[EXPORT] No rounds found in chat history for user {user_name}")
             return None
 
-        # Build dialogue entries for evaluation
-        dialogues = []
+        # Build cumulative dialogue history and collect user queries
+        dialogue_history = []
+        user_queries = []
 
         for round_data in all_rounds:
             round_num = round_data.get("round_number")
@@ -97,17 +98,34 @@ def export_dialogues_for_eval(user_name: str, output_path: str = None) -> str:
                 print(f"[EXPORT] Warning: No reply found for Round {round_num}, skipping")
                 continue
 
-            # Format as dialogue entry
-            dialogue_entry = {
-                "dialogue_id": f"{user_name}_round_{round_num}",
-                "user_goal": user_query,
-                "dialogue_history": [
-                    {"role": "user", "content": user_query},
-                    {"role": "assistant", "content": reply_content}
-                ]
-            }
+            # Append user query and assistant reply to dialogue history
+            dialogue_history.append({"role": "user", "content": user_query})
+            dialogue_history.append({"role": "assistant", "content": reply_content})
 
-            dialogues.append(dialogue_entry)
+            # Collect query for user_goal generation
+            user_queries.append(user_query)
+
+        if not dialogue_history:
+            print(f"[EXPORT] No valid dialogues found for user {user_name}")
+            return None
+
+        # Generate natural language user_goal
+        num_queries = len(user_queries)
+        query_summary = ", ".join([
+            f"({i+1}) {q}"
+            for i, q in enumerate(user_queries)
+        ])
+        user_goal = f"Multi-round shopping session with {num_queries} queries: {query_summary}"
+
+        # Create single dialogue entry for the entire session
+        dialogue_entry = {
+            "dialogue_id": user_name,
+            "user_goal": user_goal,
+            "dialogue_history": dialogue_history
+        }
+
+        # Wrap in list for consistent JSON format
+        dialogues = [dialogue_entry]
 
         # Generate output path if not provided
         if output_path is None:
@@ -119,7 +137,7 @@ def export_dialogues_for_eval(user_name: str, output_path: str = None) -> str:
         with output_path.open("w", encoding="utf-8") as f:
             json.dump(dialogues, f, ensure_ascii=False, indent=2)
 
-        print(f"[EXPORT] Successfully exported {len(dialogues)} dialogues to: {output_path}")
+        print(f"[EXPORT] Successfully exported complete session with {num_queries} rounds to: {output_path}")
         return str(output_path)
 
     except Exception as e:
