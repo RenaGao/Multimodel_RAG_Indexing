@@ -11,6 +11,11 @@ import argparse
 import concurrent.futures
 from typing import Dict, Any
 from openai import OpenAI
+import time
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # -----------------------------------
 # Configuration
@@ -19,7 +24,14 @@ MODEL_NAME = "gpt-4o"  # Strong reasoning required for "Interactivity" judgment
 TEMPERATURE = 0.1 
 MAX_WORKERS = 5
 
-client = OpenAI()
+# -----------------------------------
+# Initialize OpenAI client
+# -----------------------------------
+api_key = os.getenv("OPENAI_KEY")
+if not api_key:
+    raise ValueError("Missing OPENAI_KEY in environment variables. Please add it to your .env file.")
+
+client = OpenAI(api_key=api_key)
 
 # -----------------------------------
 # The Evaluation Prompt

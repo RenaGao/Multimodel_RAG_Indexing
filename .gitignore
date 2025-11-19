@@ -1,11 +1,14 @@
 EcomMMMU.json
 questions_test.py
+pairs.jsonl
+training_metrics.json
 /data
 /logs
 /lora_query_gen
 /cache_images
 /outputs
-pairs.jsonl
 .env
 .venv
 __pycache__
+./DS_Store
+/AgentWorkflow/storage
