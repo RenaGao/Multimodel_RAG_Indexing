@@ -7,7 +7,9 @@ from datetime import datetime
 from pathlib import Path
 import json
 import sys
+import argparse
 from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, append_agent_message, save_round_summary, load_previous_round_summaries, get_current_round_number
+from agent_prompts import get_dialogue_history_prompt, get_recommender_prompt, get_reasoner_prompt, get_reply_prompt
 
 # Custom logger class to capture all print outputs
 class TeeLogger:
@@ -75,6 +77,17 @@ def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
     return select_next
 
 def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Text RAG Base Agent for Shopping Recommendations")
+    parser.add_argument(
+        "--reply-prompt-version",
+        type=str,
+        default="v1",
+        choices=["v1", "v2"],
+        help="Version of reply agent prompt to use (default: v1, v2: adaptive/flexible)"
+    )
+    args = parser.parse_args()
+    reply_prompt_version = args.reply_prompt_version
 
     load_dotenv()
     assert os.getenv("QWEN_API_KEY"), "Missing QWEN_API_KEY in .env"
@@ -111,6 +124,7 @@ def main():
     results = {}
 
     print(f"Configuration:")
+    print(f"  Reply Prompt Version: {reply_prompt_version}")
     print(f"  Selected users: {selected_users}")
     print(f"  Per user limit: {per_user_limit or 'All questions'}")
     print(f"  Question file: {json_path}")
@@ -163,22 +177,7 @@ def main():
         dialogue_history_agent = AssistantAgent(
             name=f"Dialogue_History_{user}_agent",
             llm_config=llm_config,
-            system_message=(
-                    "You are a Dialogue History Agent.\n\n"
-
-                    "STEP 1: Immediately and automatically call the tool 'rag_search_for_dialogue_history_agent' ONCE. "
-                    "Pass the user's query as the 'current_query' parameter.\n"
-                    "The tool returns:\n"
-                    "- 'relative_rounds': Similar past conversations from RAG search\n"
-                    "- 'previous_summaries': Summaries of previous rounds in THIS session\n\n"
-
-                    "STEP 2: Generate a concise summary (2-4 sentences) based on:\n"
-                    "1. Previous round summaries (shows user's journey in this session)\n"
-                    "2. Similar past conversations (shows long-term preferences)\n"
-                    "3. Focus on user preferences, patterns, and context for recommendations\n\n"
-
-                    "Do not call any other tools. End your turn after generating the summary."
-            ),
+            system_message=get_dialogue_history_prompt(user),
         )
 
         print(f"[DEBUG] Dialogue_History_agent created for user: {user}")
@@ -186,100 +185,19 @@ def main():
         recommend_agent = AssistantAgent(
             name=f"Recommender_{user}_agent",
             llm_config=llm_config,
-            system_message=(
-                "You are a Shopping Recommender Agent.\n"
-                "Your task has exactly FOUR steps and must stop after completing them.\n\n"
-
-                "STEP 1: Immediately and automatically call the tool 'rag_search_for_recommend_agent' ONCE. "
-                "Pass the user's query as the 'user_query' parameter.\n"
-
-                "STEP 2: The tool result will contain 'recommendations' and 'user_sampled_reviews'. "
-                "Analyze the 'user_sampled_reviews' (5 past reviews from this user) to extract user preferences:\n"
-                "  - What product features/attributes does the user value?\n"
-                "  - What brands or styles does the user prefer?\n"
-                "  - What price range is typical for the user?\n"
-                "  - Are there any quality or fit preferences mentioned?\n"
-
-                "STEP 3: Based on the extracted user preferences from sampled reviews, RERANK the 'recommendations' list. "
-                "Prioritize items that best match the user's historical preferences.\n"
-
-                f"STEP 4: Use the Dialogue_History_{user}_agent's final output included earlier in the conversation "
-                "to further FILTER or adjust the reranked recommendations.\n"
-
-                "FINAL OUTPUT REQUIREMENTS:\n"
-                "1. Provide the final, reranked recommendation list.\n"
-                "2. Briefly explain HOW the user's sampled reviews influenced your reranking (1-2 sentences).\n"
-                f"3. Use ONLY information from: (1) the RAG tool result (recommendations + sampled reviews), and (2) the Dialogue_History_{user}_agent summary.\n"
-                "End your turn immediately after producing the recommendation output."
-            ),
+            system_message=get_recommender_prompt(user),
         )
 
         reason_agent = AssistantAgent(
             name=f"Reasoner_{user}_agent",
             llm_config=llm_config,
-            system_message=(
-                "You are a Reasoning Agent. "
-                "Your task is to explain WHY the product recommendations were generated.\n"
-
-                "You are provided with the FULL message history of the groupchat, "
-                "which may contain many previous rounds.\n\n"
-
-                "IMPORTANT RULES:\n"
-                "1. Only consider messages that belong to the **current question round**.\n"
-                "2. Ignore ALL messages that appear before this boundary.\n\n"
-
-                "Within the current round, extract exactly these fields:\n"
-                "- user_query:   from the first User_*_proxy_agent message after the boundary\n"
-                "- dialogue_tool_result:    from the tool message of Dialogue_History_*_agent\n"
-                f"- dialogue_summary:         from the assistant output of Dialogue_History_{user}_agent\n"
-                "- recommendation_tool_result:   from the tool message of Recommender_*_agent\n"
-                f"- final_recommendation:         from the assistant output of Recommender_{user}_agent\n\n"
-
-                "FINAL OUTPUT REQUIREMENTS:\n"
-                "1. Read ONLY these extracted fields from this round.\n"
-                "2. Explain clearly and concisely WHY the recommendation was produced.\n"
-                "3. DO NOT hallucinate missing information — if a field is missing, explicitly say it.\n"
-                "4. DO NOT use or reference any information from previous rounds.\n\n"
-
-                "End your turn after producing the explanation."
-            ),
+            system_message=get_reasoner_prompt(user),
         )
 
         reply_agent = AssistantAgent(
             name=f"Reply_{user}_agent",
             llm_config=llm_config,
-            system_message=(
-                "You are a Reply Agent. Your task is to generate a friendly, natural response "
-                "to the user based on the recommendations and reasoning provided by previous agents.\n\n"
-
-                "STEP 1: Immediately and automatically call the tool 'get_previous_round_summaries' ONCE. "
-                "This tool requires NO parameters (user_name and round_number are automatically provided).\n"
-                "The tool returns a list of summaries from all previous rounds in THIS conversation session.\n\n"
-
-                "STEP 2: Based on the tool result, determine if this is a continuation:\n"
-                "- If the tool returns an EMPTY list or NO previous summaries: This is the FIRST round.\n"
-                "  Use a friendly greeting like 'Hey there!' or 'Hi!' to welcome the user.\n"
-                "- If the tool returns previous summaries: This is a CONTINUATION of an ongoing conversation.\n"
-                "  Acknowledge the context naturally using phrases like 'Based on what we discussed earlier...', "
-                "'Following up on your previous question...', or 'Continuing from where we left off...'.\n"
-                "  DO NOT use generic greetings like 'Hey there!' or 'Hi!' in continuation rounds.\n\n"
-
-                "STEP 3: You will see in the current round's conversation history:\n"
-                "1. The user's original query\n"
-                "2. The Dialogue History agent's summary\n"
-                "3. The Recommender agent's product recommendations\n"
-                "4. The Reasoner agent's explanation\n\n"
-
-                "STEP 4: Generate your final response. Your response should:\n"
-                "- Use appropriate greeting based on whether this is first round or continuation (see STEP 2)\n"
-                "- Present the top 3-5 recommendations in a conversational way\n"
-                "- Highlight key features that match their needs\n"
-                "- Be friendly and concise (4-6 sentences)\n"
-                "- If relevant and natural, reference previous conversations (but don't force it)\n"
-                "- End with an offer to help further\n\n"
-
-                "End your turn immediately after generating the response."
-            ),
+            system_message=get_reply_prompt(version=reply_prompt_version),
         )
 
         # Create wrapper that captures user_id for reply_agent and auto-detects round number
@@ -457,12 +375,14 @@ def main():
         print(f"{'='*80}\n")
 
         # Export dialogues for evaluation
-        export_dialogues_for_eval(user)
+        eval_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        eval_output_path = f"eval_dialogues_{user}_{reply_prompt_version}_{eval_timestamp}.json"
+        export_dialogues_for_eval(user, output_path=eval_output_path)
 
     output_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path("./")
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = f"shopping_text_rag_agent_output_{output_ts}.json"
+    out_path = f"shopping_text_rag_agent_output_{reply_prompt_version}_{output_ts}.json"
 
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
