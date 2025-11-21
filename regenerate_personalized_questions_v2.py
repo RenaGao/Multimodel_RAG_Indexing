@@ -65,51 +65,65 @@ def build_v2_prompt(user_history, target_product):
     target_category = target_meta.get("main_category", "shopping")
 
     prompt = f"""
-[System Prompt]
-You are generating highly personalized shopping questions where the user EXPLICITLY REFERENCES their own purchase history and reviews.
+[CRITICAL INSTRUCTION]
+Generate questions where the user ONLY MENTIONS they have purchase/review history, but DOES NOT explicitly state their preferences in the question itself.
 
-[User's Previous Reviews]
-The user has the following purchase and review history:
+The agent MUST use RAG (Retrieval-Augmented Generation) to retrieve the user's reviews and infer their preferences. If preferences are stated in the question, RAG becomes unnecessary!
+
+[User's Previous Reviews - FOR YOUR ANALYSIS ONLY]
+The user has the following purchase and review history (DO NOT include these details in the questions):
 {history_text}
 
+[WRONG Examples - DO NOT GENERATE THESE]
+❌ "Based on my previous purchases where I prefer soft fabrics and comfortable fits, what would you recommend?"
+   → BAD: Preferences (soft, comfortable) are stated in the question
+❌ "I've noticed I really enjoy X and Y. Can you recommend?"
+   → BAD: User explicitly says what they enjoy
+❌ "Looking at my reviews, I tend to value A and B. Any suggestions?"
+   → BAD: Specific values (A, B) are mentioned
+❌ "Considering the sizing issues I mentioned, what should I look for?"
+   → BAD: Explicitly states the problem (sizing)
+
+[CORRECT Examples - GENERATE THESE TYPES]
+✅ "Based on my purchase history, what would you recommend for me?"
+   → GOOD: References history but doesn't state preferences
+✅ "Looking at my previous orders, what's suitable for me?"
+   → GOOD: Agent must RAG to discover what's suitable
+✅ "Can you suggest something that matches my preferences?"
+   → GOOD: Says "preferences" exist but doesn't reveal them
+✅ "What should I consider when choosing a new product, given my past purchases?"
+   → GOOD: Asks for guidance based on history without specifics
+✅ "Are there options that fit my style?"
+   → GOOD: References "style" but doesn't describe it
+✅ "What would work well for me based on what I've bought before?"
+   → GOOD: Requires RAG to understand "what works"
+
 [Task]
-Generate a sequence of natural, conversational questions where the user asks for product recommendations in the {target_category} category, BUT the questions MUST explicitly reference their own purchase history and preferences.
+Generate 5-8 questions in the {target_category} category where:
 
-**Critical Requirements:**
+1. **Reference History**: User mentions "my purchase history", "my reviews", "my past orders", "what I've bought before"
 
-1. **Reference Past Reviews**: Questions should mention specific things the user liked/disliked in their reviews
-   - Example: "Based on my previous reviews where I mentioned..."
-   - Example: "Considering that I complained about X in my last purchase..."
+2. **NO Explicit Preferences**: User does NOT state what they liked/disliked
+   - Don't mention: soft fabrics, comfortable, sizing issues, specific features, brands, etc.
+   - Agent MUST retrieve reviews to discover these
 
-2. **Extract Preferences**: Analyze the reviews above and have the user reference:
-   - Specific features they valued (quality, price, effectiveness, packaging, etc.)
-   - Problems they experienced (sizing issues, material quality, delivery, etc.)
-   - Brands or styles they preferred
+3. **Test RAG Requirement**: Questions should be:
+   - WITHOUT RAG: Agent can only give generic recommendations
+   - WITH RAG: Agent retrieves reviews, understands preferences, gives personalized recommendations
 
-3. **Require RAG**: Questions CANNOT be answered just from product search alone
-   - Must retrieve and analyze user's review history to understand preferences
-   - Agent needs to combine: user's query + user's historical reviews + product database
+4. **Natural Progression**: Build questions sequentially:
+   - Round 1: "Based on my history, what do you recommend?"
+   - Round 2: "Are there options that match my preferences?" (still vague)
+   - Round 3: "What about sizing/quality/price? What suits me?"
+   - Round 4: "Any alternatives that would work for me?"
 
-4. **Natural Progression**: Generate 5-8 questions that build on each other:
-   - Start general: "Based on my purchase history, recommend something..."
-   - Get specific: "Considering I mentioned X in my reviews..."
-   - Follow-up: "Given my preference for Y, what about..."
-
-5. **Conversational Style**: Make it sound natural, like a real shopping conversation
-   - Use "I", "my", "I've mentioned", "I tend to prefer"
-   - Reference specific details from the reviews above
-
-**What NOT to do:**
-- Don't generate generic questions like "I'm looking for a dress"
-- Don't ignore the user's review history
-- Don't make questions answerable without checking user reviews
+5. **Conversational**: Sound natural, use "I", "my", "me"
 
 [Output Format]
 Return ONLY a JSON array of question strings:
-["question 1", "question 2", "question 3", ...]
+["question 1", "question 2", ...]
 
-Example format:
-["Based on my previous purchases where I mentioned preferring natural ingredients, what beauty products would you recommend?", "Looking at my review history, I tend to value quick absorption and non-greasy formulas. Any suggestions?", "Considering the sizing issues I mentioned in my past orders, what should I look for?"]
+Remember: Questions should reference history but NOT reveal specific preferences. The agent must use RAG to figure out what the user likes!
 """
 
     return prompt
