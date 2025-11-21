@@ -138,24 +138,80 @@ CRITICAL CONSTRAINTS:
 - Frame questions as recommendation requests ("what would you recommend?", "which one should I get?")
 - Mix recommendation questions (60-70%) with follow-up detail questions (30-40%)
 
-QUESTION TYPES (generate a balanced mix):
+RAG VALUE TEST (CRITICAL):
+For EACH question you generate, ask yourself:
+- WITHOUT RAG: What would agent answer? (generic catalog response)
+- WITH RAG: What would agent answer? (personalized based on user's reviews)
+- If the answers would be the SAME → BAD question, revise it!
 
-A. RECOMMENDATION Questions (60-70%):
-   ✅ "I'm looking for a {product_type}. What would you recommend?"
-   ✅ "Which {product_type} would work best for summer/active wear/casual use?"
-   ✅ "What {product_type} options do you have that might suit me?"
-   ✅ "Can you suggest a good {product_type} for [scenario]?"
+Examples of BAD vs GOOD questions:
 
-B. FOLLOW-UP Questions (30-40%):
-   ✅ "What size should I get?" (about recommended product, not specific named product)
-   ✅ "How should I care for it?"
-   ✅ "What colors are available?"
-   ✅ "Is it suitable for both casual and active wear?"
+BAD: "Are there soft and breathable {product_type}s?"
+   - Without RAG: "Yes, we have these soft breathable options..." (lists products)
+   - With RAG: "Yes, we have these soft breathable options..." (SAME answer)
+   - RAG adds NO value
+
+GOOD: "Which material would work best for me?"
+   - Without RAG: "We have cotton, merino wool, polyester..." (generic list)
+   - With RAG: "Based on your reviews, you're sensitive to itchy fabrics and prefer soft cotton. I recommend cotton or merino."
+   - RAG enables PERSONALIZATION
+
+BAD: "What colors are available?"
+   - Without RAG: "Black, white, red, blue..." (catalog listing)
+   - With RAG: "Black, white, red, blue..." (SAME answer)
+   - RAG adds NO value
+
+GOOD: "Which color should I choose?"
+   - Without RAG: "We have black, white, red, blue. What's your preference?"
+   - With RAG: "You typically choose neutral colors and avoid bright prints. I recommend black or white."
+   - RAG enables PERSONALIZATION
+
+BAD: "Can you suggest a {product_type} for layering?"
+   - Without RAG: "These {product_type}s work well for layering..." (generic)
+   - With RAG: "These {product_type}s work well for layering..." (SAME answer)
+   - User already stated use case, RAG not needed
+
+GOOD: "Is this suitable for how I typically use {product_type}s?"
+   - Without RAG: "It works for various uses..." (generic)
+   - With RAG: "Based on your reviews, you use {product_type}s for both workouts and casual wear. This one is perfect for both."
+   - RAG discovers user's use case
+
+QUESTION TYPES (generate a balanced mix - ALL must pass RAG VALUE TEST):
+
+A. RECOMMENDATION Questions (60-70%) - MUST create RAG decision points:
+   GOOD: "I'm looking for a {product_type}. What would you recommend?"
+      → RAG: Recommends based on user's material/fit/color/use preferences from reviews
+
+   GOOD: "Which {product_type} would work best for me?"
+      → RAG: Analyzes user's typical use cases and preferences to personalize
+
+   GOOD: "What style of {product_type} suits me?"
+      → RAG: Checks user's past style preferences (relaxed vs fitted, casual vs sporty)
+
+   DON'T: "Which {product_type} is best for summer?" (generic, no RAG needed)
+   DON'T: "Are there breathable {product_type}s?" (user states need, just filter catalog)
+
+B. FOLLOW-UP Questions (30-40%) - MUST require RAG to personalize:
+   GOOD: "Which color should I choose?"
+      → RAG: Knows user prefers neutral vs bright, solid vs prints
+
+   GOOD: "What size would work for me?"
+      → RAG: Knows user's sizing history and fit preferences (tight vs loose)
+
+   GOOD: "Which material would be best?"
+      → RAG: Knows user's material sensitivities (itchy wool, soft cotton, etc.)
+
+   GOOD: "Is this suitable for how I typically use {product_type}s?"
+      → RAG: Knows user's use cases from reviews (workout, casual, layering, etc.)
+
+   DON'T: "What colors are available?" (catalog info, no personalization)
+   DON'T: "How should I wash it?" (generic care info, no RAG needed)
 
 WRONG Examples (DO NOT GENERATE):
-   ❌ "Which size works for the Woolly Clothing Women's Merino..." (mentions product name)
-   ❌ "I prefer soft fabrics. What do you recommend?" (states preference)
-   ❌ "Is this tank top breathable?" (assumes specific product, not asking for recommendation)
+   BAD: "Which size works for the Woolly Clothing Women's Merino..." (mentions product name)
+   BAD: "I prefer soft fabrics. What do you recommend?" (states preference explicitly)
+   BAD: "Are there {product_type}s that are soft and breathable?" (states needs, no RAG value)
+   BAD: "What colors are available?" (generic catalog, RAG doesn't help)
 
 PROCESS (INTERNALLY, DO NOT OUTPUT THESE STEPS):
 1. From the user's past reviews, infer their preferences and sensitivities
@@ -169,6 +225,31 @@ PROCESS (INTERNALLY, DO NOT OUTPUT THESE STEPS):
    - Do NOT mention specific product names
    - Do NOT state user's preferences explicitly
 
+QUESTION QUALITY CHECKLIST:
+Before finalizing each question, verify it passes ALL these tests:
+
+1. Does this question state what the user wants? (soft, breathable, for layering, etc.)
+   → If YES, REVISE to be open-ended ("Which material?" not "Are there soft ones?")
+
+2. Can agent answer this with just product catalog, without user history?
+   → If YES, REVISE to require user preference knowledge
+
+3. Would the answer be DIFFERENT if agent knew user's review history?
+   → If NO, REVISE to create a real decision point
+
+4. Does question ask about user's needs/preferences? (for me, suits me, typically use)
+   → If NO, ADD reference to make it personalized
+
+Good patterns:
+   "Which X?" (forces choice based on preferences)
+   "What X suits me?" (requires knowing user)
+   "Is this suitable for how I use X?" (requires knowing use cases)
+
+Bad patterns:
+   "Are there X that are Y?" (just filters catalog)
+   "What X options exist?" (just lists catalog)
+   "I need X for Y, what do you recommend?" (states need)
+
 COHERENCE REQUIREMENT:
 - ALL questions must be about the SAME product type: "{product_type}"
 - This is ONE shopping conversation for finding a {product_type}
@@ -177,22 +258,31 @@ COHERENCE REQUIREMENT:
 OUTPUT FORMAT (JSON):
 {{
   "latent_preferences": [
-    "prefers neutral colors, avoids bright prints",
-    "sensitive to itchy fabrics",
-    "likes slightly relaxed fit, not very tight",
-    "values durability and easy care"
+    "prefers neutral colors (black, gray, white), avoids bright prints",
+    "sensitive to itchy fabrics, prefers soft cotton or merino wool",
+    "likes relaxed fit, not tight or clingy",
+    "uses {product_type}s for both workouts and casual wear",
+    "concerned about durability and easy washing"
   ],
   "generated_questions": [
-    "I'm looking for a {product_type} for summer. What would you recommend?",
-    "Which {product_type} would work best for active wear?",
-    "What colors are available for the ones you'd suggest?",
-    "What size should I get?",
-    "How should I care for it?",
-    "Are there options that work for both casual and active use?"
+    "I'm looking for a {product_type}. What would you recommend?",
+    "Which material would work best for me?",
+    "What style would suit me - fitted or relaxed?",
+    "Which color should I choose?",
+    "What size would work for me?",
+    "Is this suitable for how I typically use {product_type}s?",
+    "How does the fit run - should I size up or down for my preference?"
   ]
 }}
 
-(Note: In the example above, questions 1-2 and 6 are RECOMMENDATION type, questions 3-5 are FOLLOW-UP type)
+EXPLANATION - How each question demonstrates RAG value:
+- Q1: Needs ALL user preferences to make personalized recommendation
+- Q2: RAG discovers user is sensitive to itchy fabrics, prefers soft materials
+- Q3: RAG discovers user prefers relaxed over fitted styles
+- Q4: RAG discovers user prefers neutral colors, avoids bright prints
+- Q5: RAG discovers user's sizing history and preferences
+- Q6: RAG discovers user's use cases (workout vs casual vs both)
+- Q7: RAG discovers user's fit preferences (tight vs loose)
 
 IMPORTANT REMINDERS:
 - Output ONLY valid JSON - NO comments like // or /* */ in the JSON output
