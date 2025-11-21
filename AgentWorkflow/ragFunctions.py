@@ -801,7 +801,7 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, top_k: int =
     sampled_reviews_data = _load_sampled_reviews(user_name)
     if sampled_reviews_data is None:
         # First call: sample and save reviews
-        sampled_reviews_data = _sample_user_reviews(user_name, num_reviews=5)
+        sampled_reviews_data = _sample_user_reviews(user_name, num_reviews=20)
         if sampled_reviews_data is not None:
             _save_sampled_reviews(user_name, sampled_reviews_data)
 

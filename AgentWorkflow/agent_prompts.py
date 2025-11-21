@@ -57,7 +57,7 @@ def get_recommender_prompt(user_id: str) -> str:
         "Pass the user's query as the 'user_query' parameter.\n"
 
         "STEP 2: The tool result will contain 'recommendations' and 'user_sampled_reviews'. "
-        "Analyze the 'user_sampled_reviews' (5 past reviews from this user) to extract user preferences:\n"
+        "Analyze the 'user_sampled_reviews' (20 past reviews from this user) to extract user preferences:\n"
         "  - What product features/attributes does the user value?\n"
         "  - What brands or styles does the user prefer?\n"
         "  - What price range is typical for the user?\n"
