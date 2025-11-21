@@ -110,7 +110,7 @@ def main():
     print(f"{'='*80}\n")
 
     # question json file path
-    json_path = Path("../questions/Amazon_Fashion_questions_20251110_214618.json")
+    json_path = Path("../questions/Amazon_Fashion_questions_v2_20251121_222830.json")
 
     all_questions_dict = load_all_questions(json_path)
 
