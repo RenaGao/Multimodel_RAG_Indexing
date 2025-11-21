@@ -30,6 +30,10 @@ for p in [VSTORE_DIR, CATALOG_DIR, USERS_DIR]:
 def item_index_dir() -> Path:
     return CATALOG_DIR / DATASET_CATEGORY / "item_index_qwen3"
 
+def user_review_embeddings_dir() -> Path:
+    """Get directory for user review embeddings."""
+    return CATALOG_DIR / DATASET_CATEGORY / "user_review_embeddings"
+
 def _now() -> str:
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
@@ -279,6 +283,87 @@ def _load_round_embeddings(user_name: str) -> Tuple[Optional[np.ndarray], Option
     except Exception as e:
         print(f"[ERROR] Loading round embeddings: {e}")
         return None, None
+
+def _load_user_review_embeddings(user_name: str) -> Tuple[Optional[np.ndarray], Optional[Dict]]:
+    """
+    Load user review embeddings and metadata from catalog directory.
+
+    Args:
+        user_name: User identifier
+
+    Returns:
+        Tuple of (embeddings_matrix, metadata_dict) or (None, None) if not found
+    """
+    # Load from catalog directory
+    review_embs_dir = user_review_embeddings_dir()
+    emb_path = review_embs_dir / f"{user_name}_review_embs.pkl"
+    meta_path = review_embs_dir / f"{user_name}_review_meta.pkl"
+
+    if not emb_path.exists() or not meta_path.exists():
+        return None, None
+
+    try:
+        with emb_path.open("rb") as f:
+            embeddings = pickle.load(f)
+        with meta_path.open("rb") as f:
+            metadata = pickle.load(f)
+        print(f"[LOAD_REVIEW_EMBS] Loaded {len(embeddings)} review embeddings for user {user_name}")
+        return embeddings, metadata
+    except Exception as e:
+        print(f"[LOAD_REVIEW_EMBS ERROR] {e}")
+        return None, None
+
+
+def _select_relevant_reviews(user_query: str, user_name: str, top_k: int = 5) -> List[Dict]:
+    """
+    Select top-k most relevant reviews based on query similarity.
+
+    Args:
+        user_query: Current user query
+        user_name: User identifier
+        top_k: Number of reviews to select (default: 5)
+
+    Returns:
+        List of selected review dicts with similarity scores
+    """
+    # Load user review embeddings
+    review_embs, metadata = _load_user_review_embeddings(user_name)
+
+    if review_embs is None:
+        # Fallback to old fixed sampling method
+        print(f"[SELECT_REVIEWS] No review embeddings found, using fallback sampling")
+        sampled_data = _sample_user_reviews(user_name, num_reviews=top_k)
+        if sampled_data:
+            return sampled_data.get("reviews", [])
+        return []
+
+    # Load item index model to encode query
+    iidx_dir = item_index_dir()
+    iidx = _Index(iidx_dir)
+    iidx.load()
+
+    # Generate query embedding
+    query_emb = iidx.model.encode([user_query], normalize_embeddings=True)
+
+    # Calculate similarities
+    sims = _cosine(query_emb, review_embs).ravel()
+
+    # Get top-k indices
+    top_indices = sims.argsort()[::-1][:min(top_k, len(sims))]
+
+    # Extract top-k reviews
+    selected_reviews = []
+    for idx in top_indices:
+        review_data = metadata["reviews"][idx].copy()
+        review_data["similarity_score"] = float(sims[idx])
+        selected_reviews.append(review_data)
+
+    print(f"[SELECT_REVIEWS] Selected {len(selected_reviews)} reviews based on query similarity")
+    if selected_reviews:
+        print(f"[SELECT_REVIEWS] Top similarity score: {selected_reviews[0]['similarity_score']:.4f}")
+
+    return selected_reviews
+
 
 def _append_round_embedding(user_name: str, query: str, round_id: str, round_number: int):
     """Append a new query embedding to user's embedding matrix."""
@@ -797,13 +882,8 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, top_k: int =
         if len(recs) >= top_k:
             break
 
-    # 4) Load or sample user reviews
-    sampled_reviews_data = _load_sampled_reviews(user_name)
-    if sampled_reviews_data is None:
-        # First call: sample and save reviews
-        sampled_reviews_data = _sample_user_reviews(user_name, num_reviews=5)
-        if sampled_reviews_data is not None:
-            _save_sampled_reviews(user_name, sampled_reviews_data)
+    # 4) Dynamically select relevant reviews based on query similarity
+    selected_reviews = _select_relevant_reviews(user_query, user_name, top_k=5)
 
     up = _user_paths(user_name)
 
@@ -827,6 +907,7 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, top_k: int =
     return {
         "dataset_category": DATASET_CATEGORY,
         "recommendations": recs,
-        "user_sampled_reviews": sampled_reviews_data.get("reviews", []) if sampled_reviews_data else [],
+        "user_sampled_reviews": selected_reviews,
+        "review_selection_method": "dynamic_similarity",
         "ts": _now(),
     }
