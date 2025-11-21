@@ -160,6 +160,16 @@ def generate_v2_questions(user_id, user_history, target_product, model="gpt-4o-m
 
         content = response.choices[0].message.content.strip()
 
+        # Remove markdown code blocks if present
+        if content.startswith("```"):
+            # Remove opening ```json or ```
+            content = content.lstrip("`").strip()
+            if content.startswith("json"):
+                content = content[4:].strip()
+            # Remove closing ```
+            if content.endswith("```"):
+                content = content[:-3].strip()
+
         # Parse JSON array
         if content.startswith("[") and content.endswith("]"):
             questions = json.loads(content)
@@ -167,7 +177,18 @@ def generate_v2_questions(user_id, user_history, target_product, model="gpt-4o-m
         else:
             # Fallback: try to extract questions from text
             print(f"[Warning] Unexpected format for user {user_id}, attempting fallback parsing")
-            questions = [line.strip().strip('"\'') for line in content.split("\n") if line.strip()]
+            # Try to find JSON array in text
+            start_idx = content.find("[")
+            end_idx = content.rfind("]")
+            if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
+                try:
+                    json_str = content[start_idx:end_idx+1]
+                    questions = json.loads(json_str)
+                    return questions
+                except:
+                    pass
+            # Final fallback: split by lines
+            questions = [line.strip().strip('"\'') for line in content.split("\n") if line.strip() and not line.startswith("[") and not line.startswith("]")]
             return questions
 
     except Exception as e:
