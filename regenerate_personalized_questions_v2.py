@@ -66,6 +66,28 @@ def build_v2_prompt(user_history, target_product):
     target_title = target_meta.get("title", "product")
     target_category = target_meta.get("main_category", "shopping")
 
+    # Extract generic product type (e.g., "tank top" not full brand/model name)
+    target_words = target_title.lower().split()
+    product_keywords = {
+        "top": "top", "tank": "tank top", "dress": "dress", "shirt": "shirt",
+        "hoodie": "hoodie", "sweater": "sweater", "pants": "pants", "jeans": "jeans",
+        "shorts": "shorts", "skirt": "skirt", "jacket": "jacket", "coat": "coat",
+        "shoes": "shoes", "boots": "boots", "sandals": "sandals", "sneakers": "sneakers",
+        "bag": "bag", "purse": "purse", "wallet": "wallet", "belt": "belt",
+        "hat": "hat", "scarf": "scarf", "gloves": "gloves", "socks": "socks"
+    }
+
+    # Find product type from title
+    product_type = "product"  # default
+    for word in target_words:
+        if word in product_keywords:
+            product_type = product_keywords[word]
+            break
+
+    # Special case: if "tank" and "top" both present, use "tank top"
+    if "tank" in target_words and "top" in target_words:
+        product_type = "tank top"
+
     # Extract product metadata for decision points
     target_details = target_meta.get("details", {})
     available_colors = target_meta.get("colors", [])
@@ -90,42 +112,67 @@ INPUTS:
 - 3–5 of the user's past product reviews (with metadata of those items).
 
 TARGET PRODUCT METADATA:
+Product Type: {product_type}
+Category: {target_category}
 {metadata_text}
 
 USER'S PAST REVIEWS:
 {history_text}
 
+SCENARIO:
+This is a product RECOMMENDATION conversation. The user is shopping and wants the agent to recommend products.
+- User does NOT know about the target product yet - they're asking for recommendations
+- Agent should use RAG to retrieve user's review history and make personalized recommendations
+- Questions should be a mix of recommendation requests and follow-up detail questions
+
 GOAL:
 Generate user-side shopping questions that:
-- Look natural and relatively generic on the surface.
-- Do NOT explicitly state the user's detailed preferences.
-- Still create decision points where knowing the user's preferences from reviews would clearly improve the answer.
+- Look natural and relatively generic on the surface
+- Do NOT explicitly state the user's detailed preferences
+- Create decision points where RAG of user reviews enables personalized answers
+- Frame as recommendation requests, not product review questions
 
-IMPORTANT:
-- The questions should NOT mention specific preferences like:
-  "I prefer neutral colors", "I hate itchy wool", "I always choose loose fit", etc.
-- Instead, ask open questions such as:
-  "Which color should I choose?", "Which size would work better for me?",
-  "Is there anything I should watch out for with this material?", etc.
-- The idea is that:
-  - A system WITHOUT access to user reviews can still answer in a generic way.
-  - A system WITH access to user reviews can give a more tailored answer based on the user's past behavior.
+CRITICAL CONSTRAINTS:
+- DO NOT mention the specific product name/title (e.g., "Woolly Clothing Women's Merino...")
+- Use generic product type instead: "{product_type}"
+- Frame questions as recommendation requests ("what would you recommend?", "which one should I get?")
+- Mix recommendation questions (60-70%) with follow-up detail questions (30-40%)
+
+QUESTION TYPES (generate a balanced mix):
+
+A. RECOMMENDATION Questions (60-70%):
+   ✅ "I'm looking for a {product_type}. What would you recommend?"
+   ✅ "Which {product_type} would work best for summer/active wear/casual use?"
+   ✅ "What {product_type} options do you have that might suit me?"
+   ✅ "Can you suggest a good {product_type} for [scenario]?"
+
+B. FOLLOW-UP Questions (30-40%):
+   ✅ "What size should I get?" (about recommended product, not specific named product)
+   ✅ "How should I care for it?"
+   ✅ "What colors are available?"
+   ✅ "Is it suitable for both casual and active wear?"
+
+WRONG Examples (DO NOT GENERATE):
+   ❌ "Which size works for the Woolly Clothing Women's Merino..." (mentions product name)
+   ❌ "I prefer soft fabrics. What do you recommend?" (states preference)
+   ❌ "Is this tank top breathable?" (assumes specific product, not asking for recommendation)
 
 PROCESS (INTERNALLY, DO NOT OUTPUT THESE STEPS):
 1. From the user's past reviews, infer their preferences and sensitivities
    (e.g., typical colors, fit, comfort, durability, washing issues, use cases).
-2. Identify 5–10 "decision points" for the target product where these preferences matter:
+2. Identify 5–10 "decision points" where these preferences matter:
    - e.g., color choice, size choice, fit (tight vs relaxed), warmth vs breathability,
      durability vs softness, work vs casual use, etc.
-3. For each decision point, design a question that:
-   - Mentions the decision (e.g., choosing color/size/usage),
-   - DOES NOT describe the user's preferences explicitly,
-   - Would be answered differently depending on those preferences.
+3. For each decision point, design questions that:
+   - Start with recommendation requests (60-70%)
+   - Follow with detail questions about recommendations (30-40%)
+   - Do NOT mention specific product names
+   - Do NOT state user's preferences explicitly
 
 COHERENCE REQUIREMENT:
-- ALL questions must be about the SAME target product: "{target_title}"
-- This is ONE shopping decision, not multiple products
-- Questions should cover different decision points for this specific product
+- ALL questions must be about the SAME product type: "{product_type}"
+- This is ONE shopping conversation for finding a {product_type}
+- Questions should flow naturally: recommendation requests → follow-up details
 
 OUTPUT FORMAT (JSON):
 {{
@@ -133,20 +180,28 @@ OUTPUT FORMAT (JSON):
     "prefers neutral colors, avoids bright prints",
     "sensitive to itchy fabrics",
     "likes slightly relaxed fit, not very tight",
+    "values durability and easy care",
     ...
   ],
   "generated_questions": [
-    "Which color should I choose for this {target_title}?",
-    "How does the material feel? Is it soft or rough?",
-    "Should I go with my usual size or size up for comfort?",
+    "I'm looking for a {product_type} for summer. What would you recommend?",        // Recommendation
+    "Which {product_type} would work best for active wear?",                        // Recommendation + constraint
+    "What colors are available for the ones you'd suggest?",                        // Follow-up
+    "What size should I get?",                                                      // Follow-up
+    "How should I care for it?",                                                    // Follow-up
+    "Are there options that work for both casual and active use?",                 // Recommendation + constraint
     ...
   ]
 }}
 
-The `latent_preferences` are only for debugging and evaluation.
-They must NOT be directly written into the questions.
+IMPORTANT REMINDERS:
+- The `latent_preferences` are only for debugging and evaluation - they must NOT appear in questions
+- 60-70% of questions should be RECOMMENDATION requests
+- 30-40% of questions should be FOLLOW-UP details
+- DO NOT mention specific product names - use generic "{product_type}" only
+- Questions should flow naturally from asking for recommendations to asking about details
 
-Generate 5-8 questions that cover different decision points (color, size, fit, material, care, usage, etc.).
+Generate 5-8 questions that cover different decision points (use case, color, size, fit, material, care, etc.).
 """
 
     return prompt
