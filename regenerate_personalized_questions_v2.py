@@ -84,46 +84,65 @@ The user has the following purchase and review history (DO NOT include these det
 ❌ "Considering the sizing issues I mentioned, what should I look for?"
    → BAD: Explicitly states the problem (sizing)
 
-[CORRECT Examples - GENERATE THESE TYPES]
-✅ "Based on my purchase history, what would you recommend for me?"
-   → GOOD: References history but doesn't state preferences
-✅ "Looking at my previous orders, what's suitable for me?"
-   → GOOD: Agent must RAG to discover what's suitable
-✅ "Can you suggest something that matches my preferences?"
-   → GOOD: Says "preferences" exist but doesn't reveal them
-✅ "What should I consider when choosing a new product, given my past purchases?"
-   → GOOD: Asks for guidance based on history without specifics
-✅ "Are there options that fit my style?"
-   → GOOD: References "style" but doesn't describe it
-✅ "What would work well for me based on what I've bought before?"
-   → GOOD: Requires RAG to understand "what works"
+[CORRECT Examples - NATURAL CONVERSATION STYLE]
+✅ "Hey, I'm looking for a new top. Based on what I usually buy, what would you suggest?"
+   → GOOD: Casual opening, references history naturally
+✅ "I need something similar to what I've ordered before. Any ideas?"
+   → GOOD: Natural phrasing, agent must RAG to understand "similar"
+✅ "My old hoodie wore out. What do you think I should get to replace it?"
+   → GOOD: Shopping context, asks for opinion based on implied history
+✅ "I'm shopping for summer clothes again. What would work for me?"
+   → GOOD: Seasonal context, references pattern ("again") without specifics
+✅ "Can you help me find something? I want to stick with my usual style."
+   → GOOD: Casual request, mentions "style" but doesn't describe it
+✅ "Got any recommendations based on what I typically order?"
+   → GOOD: Very casual, natural phrasing
+✅ "I need a new dress for an event. What matches my taste?"
+   → GOOD: Specific scenario, references "taste" requiring RAG
+✅ "What do you think would suit me? I trust your picks based on my history."
+   → GOOD: Friend-like tone, conversational
 
 [Task]
 Generate 5-8 questions in the {target_category} category where:
 
-1. **Reference History**: User mentions "my purchase history", "my reviews", "my past orders", "what I've bought before"
+1. **Natural Conversation**: Sound like a REAL person talking to a shopping assistant
+   - Use casual openings: "Hey", "I'm looking for", "I need", "Can you help me find"
+   - Natural phrasing: "What do you think?", "Any ideas?", "Got suggestions?", "Thoughts?"
+   - Add shopping context: "My old X wore out", "Shopping for summer again", "Need something for an event"
 
-2. **NO Explicit Preferences**: User does NOT state what they liked/disliked
+2. **Reference History (but casually)**: Naturally mention purchase patterns
+   - "based on what I usually buy", "similar to what I've ordered", "my usual style", "what I typically get"
+   - NOT formal phrases like "Based on my purchase history" (too robotic)
+
+3. **NO Explicit Preferences**: User does NOT state what they liked/disliked
    - Don't mention: soft fabrics, comfortable, sizing issues, specific features, brands, etc.
    - Agent MUST retrieve reviews to discover these
 
-3. **Test RAG Requirement**: Questions should be:
+4. **Test RAG Requirement**: Questions should be:
    - WITHOUT RAG: Agent can only give generic recommendations
    - WITH RAG: Agent retrieves reviews, understands preferences, gives personalized recommendations
 
-4. **Natural Progression**: Build questions sequentially:
-   - Round 1: "Based on my history, what do you recommend?"
-   - Round 2: "Are there options that match my preferences?" (still vague)
-   - Round 3: "What about sizing/quality/price? What suits me?"
-   - Round 4: "Any alternatives that would work for me?"
+5. **Natural Progression**: Build conversation naturally:
+   - Start: "Hey, I'm looking for a new X. What would work for me?"
+   - Follow-up: "I need something similar to what I usually get. Ideas?"
+   - Clarify: "What about the fit/style? What suits me?"
+   - Alternatives: "Got any other options that match my taste?"
 
-5. **Conversational**: Sound natural, use "I", "my", "me"
+6. **Variety**: Mix different conversation styles:
+   - Direct requests: "I need a new dress"
+   - Questions: "What do you think would work?"
+   - Explanations: "My old hoodie's worn out"
+   - Trust-building: "You know my style, what's good?"
 
 [Output Format]
 Return ONLY a JSON array of question strings:
 ["question 1", "question 2", ...]
 
-Remember: Questions should reference history but NOT reveal specific preferences. The agent must use RAG to figure out what the user likes!
+Remember:
+- Sound like a REAL person having a natural conversation
+- Reference purchase history CASUALLY (not formally)
+- Don't state specific preferences
+- Agent must use RAG to understand user's taste
 """
 
     return prompt
