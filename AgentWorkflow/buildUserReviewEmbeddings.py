@@ -30,7 +30,7 @@ DATASET_CATEGORY = "Amazon_Fashion"
 REVIEW_EMBEDDINGS_DIR = CATALOG_DIR / DATASET_CATEGORY / "user_review_embeddings"
 
 USER_DATA_PATH = Path("/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/Amazon_Fashion_top_100_user_data.json")
-QUESTIONS_PATH = Path("questions/Amazon_Fashion_questions_20251110_214618.json")
+QUESTIONS_PATH = Path("../questions/Amazon_Fashion_questions_20251110_214618.json")
 
 # Ensure directories exist
 for p in [VSTORE_DIR, CATALOG_DIR, REVIEW_EMBEDDINGS_DIR]:
