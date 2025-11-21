@@ -31,7 +31,7 @@ def main():
 
     # question json file path
     # TODO: need this format of question list
-    json_path = "../questions/Amazon_Fashion_questions_20251110_214618.json"
+    json_path = "../questions/Amazon_Fashion_questions_v2_20251121_222830.json"
 
     all_questions_dict = load_all_questions(json_path)
 
@@ -228,7 +228,7 @@ def main():
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             eval_dir = Path("./")
             eval_dir.mkdir(parents=True, exist_ok=True)
-            eval_path = eval_dir / f"baseline_eval_dialogues_{user}_{timestamp}.json"
+            eval_path = eval_dir / f"baseline_eval_dialogues_qv2_{user}_{timestamp}.json"
             with open(eval_path, "w", encoding="utf-8") as f:
                 json.dump([eval_entry], f, ensure_ascii=False, indent=2)
 
@@ -237,7 +237,7 @@ def main():
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path("./")
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = f"shopping_agent_output_{ts}.json"
+    out_path = f"shopping_agent_output_qv2_{ts}.json"
 
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
