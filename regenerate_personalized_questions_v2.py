@@ -60,15 +60,27 @@ def build_v2_prompt(user_history, target_product):
         if item.get('review_title'):
             history_text += f"   Review Title: \"{item['review_title']}\"\n"
 
-    # Extract target category for context
+    # Extract target category and product type for context
     target_meta = target_product["product_meta"]
     target_category = target_meta.get("main_category", "shopping")
+    target_title = target_meta.get("title", "product")
+
+    # Extract product type (e.g., "tank top", "dress", "hoodie")
+    # Simple heuristic: take first few words of title
+    target_type = " ".join(target_title.lower().split()[:3])
 
     prompt = f"""
 [CRITICAL INSTRUCTION]
 Generate questions where the user ONLY MENTIONS they have purchase/review history, but DOES NOT explicitly state their preferences in the question itself.
 
 The agent MUST use RAG (Retrieval-Augmented Generation) to retrieve the user's reviews and infer their preferences. If preferences are stated in the question, RAG becomes unnecessary!
+
+[CRITICAL: Product Focus]
+ALL questions in this conversation must be about: "{target_type}"
+
+This is ONE shopping session where the user is looking for ONE type of product.
+Do NOT generate questions about different product types (e.g., don't mix "top", "hoodie", "dress").
+All 5-8 questions should be a coherent conversation about finding the SAME product type.
 
 [User's Previous Reviews - FOR YOUR ANALYSIS ONLY]
 The user has the following purchase and review history (DO NOT include these details in the questions):
@@ -85,64 +97,72 @@ The user has the following purchase and review history (DO NOT include these det
    → BAD: Explicitly states the problem (sizing)
 
 [CORRECT Examples - NATURAL CONVERSATION STYLE]
-✅ "Hey, I'm looking for a new top. Based on what I usually buy, what would you suggest?"
-   → GOOD: Casual opening, references history naturally
-✅ "I need something similar to what I've ordered before. Any ideas?"
-   → GOOD: Natural phrasing, agent must RAG to understand "similar"
-✅ "My old hoodie wore out. What do you think I should get to replace it?"
-   → GOOD: Shopping context, asks for opinion based on implied history
-✅ "I'm shopping for summer clothes again. What would work for me?"
+Example: If target product is "cotton tank top", ALL questions should be about tank tops:
+
+✅ "Hey, I'm looking for a new tank top. Based on what I usually buy, what would you suggest?"
+   → GOOD: Casual opening, references history naturally, mentions target product
+✅ "I need something similar to the tank tops I've ordered before. Any ideas?"
+   → GOOD: Natural phrasing, agent must RAG to understand "similar", stays focused
+✅ "What about the fit? What style of tank top would work for me?"
+   → GOOD: Follow-up question, agent needs RAG to know user's fit preferences
+✅ "I'm shopping for summer tank tops again. What would work for me?"
    → GOOD: Seasonal context, references pattern ("again") without specifics
-✅ "Can you help me find something? I want to stick with my usual style."
+✅ "Can you help me find a tank top? I want to stick with my usual style."
    → GOOD: Casual request, mentions "style" but doesn't describe it
-✅ "Got any recommendations based on what I typically order?"
-   → GOOD: Very casual, natural phrasing
-✅ "I need a new dress for an event. What matches my taste?"
-   → GOOD: Specific scenario, references "taste" requiring RAG
-✅ "What do you think would suit me? I trust your picks based on my history."
-   → GOOD: Friend-like tone, conversational
+✅ "Got any other tank top recommendations based on what I typically order?"
+   → GOOD: Very casual, natural phrasing, asks for alternatives
+✅ "What do you think would suit me for a tank top? I trust your picks based on my history."
+   → GOOD: Friend-like tone, conversational, maintains product focus
 
 [Task]
-Generate 5-8 questions in the {target_category} category where:
+Generate 5-8 questions about "{target_type}" in the {target_category} category where:
 
-1. **Natural Conversation**: Sound like a REAL person talking to a shopping assistant
+1. **COHERENCE (CRITICAL)**: ALL questions must be about "{target_type}"
+   - This is ONE shopping conversation for ONE product type
+   - Questions should naturally progress through a coherent shopping journey
+   - Example progression: Introduction → Style/Fit questions → Feature questions → Alternatives → Specifics
+   - Do NOT ask about different products (e.g., don't mix tank tops with hoodies)
+
+2. **Natural Conversation**: Sound like a REAL person talking to a shopping assistant
    - Use casual openings: "Hey", "I'm looking for", "I need", "Can you help me find"
    - Natural phrasing: "What do you think?", "Any ideas?", "Got suggestions?", "Thoughts?"
-   - Add shopping context: "My old X wore out", "Shopping for summer again", "Need something for an event"
+   - Add shopping context: "My old {target_type} wore out", "Shopping for {target_type} again"
 
-2. **Reference History (but casually)**: Naturally mention purchase patterns
+3. **Reference History (but casually)**: Naturally mention purchase patterns
    - "based on what I usually buy", "similar to what I've ordered", "my usual style", "what I typically get"
    - NOT formal phrases like "Based on my purchase history" (too robotic)
 
-3. **NO Explicit Preferences**: User does NOT state what they liked/disliked
+4. **NO Explicit Preferences**: User does NOT state what they liked/disliked
    - Don't mention: soft fabrics, comfortable, sizing issues, specific features, brands, etc.
    - Agent MUST retrieve reviews to discover these
 
-4. **Test RAG Requirement**: Questions should be:
+5. **Test RAG Requirement**: Questions should be:
    - WITHOUT RAG: Agent can only give generic recommendations
    - WITH RAG: Agent retrieves reviews, understands preferences, gives personalized recommendations
 
-5. **Natural Progression**: Build conversation naturally:
-   - Start: "Hey, I'm looking for a new X. What would work for me?"
-   - Follow-up: "I need something similar to what I usually get. Ideas?"
-   - Clarify: "What about the fit/style? What suits me?"
-   - Alternatives: "Got any other options that match my taste?"
+6. **Natural Progression**: Build conversation naturally about "{target_type}":
+   - Start: "Hey, I'm looking for a new {target_type}. What would work for me?"
+   - Follow-up: "I need {target_type} similar to what I usually get. Ideas?"
+   - Clarify: "What about the fit/style of {target_type}? What suits me?"
+   - Alternatives: "Got any other {target_type} options that match my taste?"
 
-6. **Variety**: Mix different conversation styles:
-   - Direct requests: "I need a new dress"
-   - Questions: "What do you think would work?"
-   - Explanations: "My old hoodie's worn out"
-   - Trust-building: "You know my style, what's good?"
+7. **Variety**: Mix different conversation styles (but all about "{target_type}"):
+   - Direct requests: "I need a new {target_type}"
+   - Questions: "What {target_type} do you think would work?"
+   - Explanations: "My old {target_type}'s worn out"
+   - Trust-building: "You know my style, what {target_type} is good?"
 
 [Output Format]
 Return ONLY a JSON array of question strings:
 ["question 1", "question 2", ...]
 
 Remember:
+- **ALL questions must be about "{target_type}"** - this is ONE coherent shopping conversation
 - Sound like a REAL person having a natural conversation
 - Reference purchase history CASUALLY (not formally)
 - Don't state specific preferences
 - Agent must use RAG to understand user's taste
+- Questions should flow naturally as a progressive conversation about the SAME product
 """
 
     return prompt
