@@ -907,7 +907,7 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, top_k: int =
     return {
         "dataset_category": DATASET_CATEGORY,
         "recommendations": recs,
-        "user_sampled_reviews": selected_reviews,
+        "relevant_user_reviews": selected_reviews,
         "review_selection_method": "dynamic_similarity",
         "ts": _now(),
     }

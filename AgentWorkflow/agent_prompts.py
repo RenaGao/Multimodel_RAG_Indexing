@@ -56,14 +56,14 @@ def get_recommender_prompt(user_id: str) -> str:
         "STEP 1: Immediately and automatically call the tool 'rag_search_for_recommend_agent' ONCE. "
         "Pass the user's query as the 'user_query' parameter.\n"
 
-        "STEP 2: The tool result will contain 'recommendations' and 'user_sampled_reviews'. "
-        "Analyze the 'user_sampled_reviews' (5 past reviews from this user) to extract user preferences:\n"
+        "STEP 2: The tool result will contain 'recommendations' and 'relevant_user_reviews'. "
+        "Analyze the 'relevant_user_reviews' (5 most relevant past reviews, dynamically selected based on query similarity) to extract user preferences:\n"
         "  - What product features/attributes does the user value?\n"
         "  - What brands or styles does the user prefer?\n"
         "  - What price range is typical for the user?\n"
         "  - Are there any quality or fit preferences mentioned?\n"
 
-        "STEP 3: Based on the extracted user preferences from sampled reviews, RERANK the 'recommendations' list. "
+        "STEP 3: Based on the extracted user preferences from relevant reviews, RERANK the 'recommendations' list. "
         "Prioritize items that best match the user's historical preferences.\n"
 
         f"STEP 4: Use the Dialogue_History_{user_id}_agent's final output included earlier in the conversation "
@@ -71,8 +71,8 @@ def get_recommender_prompt(user_id: str) -> str:
 
         "FINAL OUTPUT REQUIREMENTS:\n"
         "1. Provide the final, reranked recommendation list.\n"
-        "2. Briefly explain HOW the user's sampled reviews influenced your reranking (1-2 sentences).\n"
-        f"3. Use ONLY information from: (1) the RAG tool result (recommendations + sampled reviews), and (2) the Dialogue_History_{user_id}_agent summary.\n"
+        "2. Briefly explain HOW the user's relevant reviews influenced your reranking (1-2 sentences).\n"
+        f"3. Use ONLY information from: (1) the RAG tool result (recommendations + relevant reviews), and (2) the Dialogue_History_{user_id}_agent summary.\n"
         "End your turn immediately after producing the recommendation output."
     )
 

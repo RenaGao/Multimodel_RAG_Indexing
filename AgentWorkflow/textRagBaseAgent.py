@@ -382,7 +382,7 @@ def main():
     output_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = Path("./")
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = f"shopping_text_rag_agent_output_{reply_prompt_version}_{output_ts}.json"
+    out_path = f"shopping_text_rag_agent_output_qv2_ragreview_{reply_prompt_version}_{output_ts}.json"
 
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
