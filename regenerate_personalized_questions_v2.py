@@ -180,21 +180,22 @@ OUTPUT FORMAT (JSON):
     "prefers neutral colors, avoids bright prints",
     "sensitive to itchy fabrics",
     "likes slightly relaxed fit, not very tight",
-    "values durability and easy care",
-    ...
+    "values durability and easy care"
   ],
   "generated_questions": [
-    "I'm looking for a {product_type} for summer. What would you recommend?",        // Recommendation
-    "Which {product_type} would work best for active wear?",                        // Recommendation + constraint
-    "What colors are available for the ones you'd suggest?",                        // Follow-up
-    "What size should I get?",                                                      // Follow-up
-    "How should I care for it?",                                                    // Follow-up
-    "Are there options that work for both casual and active use?",                 // Recommendation + constraint
-    ...
+    "I'm looking for a {product_type} for summer. What would you recommend?",
+    "Which {product_type} would work best for active wear?",
+    "What colors are available for the ones you'd suggest?",
+    "What size should I get?",
+    "How should I care for it?",
+    "Are there options that work for both casual and active use?"
   ]
 }}
 
+(Note: In the example above, questions 1-2 and 6 are RECOMMENDATION type, questions 3-5 are FOLLOW-UP type)
+
 IMPORTANT REMINDERS:
+- Output ONLY valid JSON - NO comments like // or /* */ in the JSON output
 - The `latent_preferences` are only for debugging and evaluation - they must NOT appear in questions
 - 60-70% of questions should be RECOMMENDATION requests
 - 30-40% of questions should be FOLLOW-UP details
