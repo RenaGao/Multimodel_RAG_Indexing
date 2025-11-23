@@ -11,6 +11,7 @@ import os
 import argparse
 import concurrent.futures
 from openai import OpenAI
+from dotenv import load_dotenv
 
 # -----------------------------------
 # Configuration
@@ -19,8 +20,7 @@ MODEL_NAME = "gpt-4o"
 TEMPERATURE = 0.0 
 MAX_WORKERS = 5
 
-client = OpenAI()
-
+load_dotenv()
 # -----------------------------------
 # Initialize OpenAI client
 # -----------------------------------
