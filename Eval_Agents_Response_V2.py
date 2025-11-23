@@ -98,6 +98,73 @@ Goal: {user_goal}
 # Helper Functions
 # -----------------------------------
 
+def load_dialogues_from_directory(dir_path):
+    """
+    Scan directory for dialogue JSON files and automatically identify baseline vs RAG.
+
+    Args:
+        dir_path: Directory containing dialogue JSON files
+
+    Returns:
+        List of dialogue entries with rag_enabled field added
+    """
+    import glob
+
+    if not os.path.isdir(dir_path):
+        raise ValueError(f"Input path is not a directory: {dir_path}")
+
+    # Find all JSON files in directory
+    json_files = glob.glob(os.path.join(dir_path, "*.json"))
+
+    if not json_files:
+        raise FileNotFoundError(f"No JSON files found in directory: {dir_path}")
+
+    all_dialogues = []
+    baseline_count = 0
+    rag_count = 0
+
+    for file_path in json_files:
+        filename = os.path.basename(file_path).lower()
+
+        # Determine if this is baseline or RAG based on filename
+        is_baseline = "baseline" in filename
+        is_rag = "eval_dialogues" in filename and not is_baseline
+
+        # Skip files that don't match expected patterns
+        if not (is_baseline or is_rag):
+            print(f"⚠️  Skipping unrecognized file: {os.path.basename(file_path)}")
+            continue
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                dialogues = json.load(f)
+
+            # Handle both list and single dialogue formats
+            if isinstance(dialogues, dict):
+                dialogues = [dialogues]
+
+            # Add rag_enabled field to each dialogue
+            for dialogue in dialogues:
+                dialogue["rag_enabled"] = is_rag
+                all_dialogues.append(dialogue)
+
+            if is_baseline:
+                baseline_count += len(dialogues)
+            else:
+                rag_count += len(dialogues)
+
+            print(f"✓ Loaded {len(dialogues)} dialogues from {os.path.basename(file_path)} ({'RAG' if is_rag else 'Baseline'})")
+
+        except Exception as e:
+            print(f"✗ Error loading {os.path.basename(file_path)}: {str(e)}")
+            continue
+
+    print(f"\n📊 Total loaded: {len(all_dialogues)} dialogues")
+    print(f"   - Baseline (no RAG): {baseline_count}")
+    print(f"   - RAG enabled: {rag_count}")
+
+    return all_dialogues
+
 def format_full_dialogue(dialogue_history):
     """Formats the full back-and-forth for context."""
     formatted = []
@@ -193,12 +260,25 @@ def evaluate_single_entry(entry, loaded_profiles=None):
     except Exception as e:
         return {"dialogue_id": entry.get("dialogue_id"), "error": str(e)}
 
-def batch_evaluate(input_path, output_path, profiles_path=None):
+def batch_evaluate(input_path, output_path, profiles_path=None, paired_output_path=None):
     if not os.path.exists(input_path):
-        raise FileNotFoundError(f"Input file not found: {input_path}")
+        raise FileNotFoundError(f"Input path not found: {input_path}")
 
-    with open(input_path, "r", encoding="utf-8") as f:
-        dialogues = json.load(f)
+    # Check if input is directory or file
+    if os.path.isdir(input_path):
+        print("📂 Scanning directory for dialogue files...")
+        dialogues = load_dialogues_from_directory(input_path)
+    else:
+        # Fallback to single file mode
+        print("📄 Loading single dialogue file...")
+        with open(input_path, "r", encoding="utf-8") as f:
+            dialogues = json.load(f)
+        # Ensure rag_enabled field exists
+        if isinstance(dialogues, list):
+            for d in dialogues:
+                if "rag_enabled" not in d:
+                    d["rag_enabled"] = False  # Default to baseline
+        print(f"✓ Loaded {len(dialogues)} dialogues")
 
     # Load user profiles if provided
     loaded_profiles = None
@@ -211,7 +291,7 @@ def batch_evaluate(input_path, output_path, profiles_path=None):
                 loaded_profiles = json.load(f)
             print(f"✓ Loaded {len(loaded_profiles)} user profiles from {profiles_path}")
 
-    print(f"🚀 Evaluating AGGREGATE performance for {len(dialogues)} dialogues...")
+    print(f"\n🚀 Evaluating AGGREGATE performance for {len(dialogues)} dialogues...")
 
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -219,10 +299,24 @@ def batch_evaluate(input_path, output_path, profiles_path=None):
         for future in concurrent.futures.as_completed(futures):
             results.append(future.result())
 
+    # Save evaluation results
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
+    print(f"\n💾 Evaluation results saved to: {output_path}")
+
+    # Print aggregate report
     print_aggregate_report(results)
+
+    # Generate and print paired comparison if requested
+    if paired_output_path:
+        paired_stats = generate_paired_comparison(results)
+        print_paired_comparison_report(paired_stats, paired_output_path)
+    else:
+        # Still generate paired comparison but don't save
+        paired_stats = generate_paired_comparison(results)
+        if "error" not in paired_stats:
+            print_paired_comparison_report(paired_stats)
 
 def print_aggregate_report(results):
     """Compares RAG vs No-RAG on long-context consistency."""
@@ -263,13 +357,155 @@ def print_aggregate_report(results):
         for f, c in sorted_flaws[:3]:
             print(f"      - {f}: {c} dialogues")
 
+def generate_paired_comparison(results):
+    """
+    Generate paired comparison between RAG and Baseline for same dialogue_id.
+
+    Args:
+        results: List of evaluation results
+
+    Returns:
+        Dict with paired comparison statistics
+    """
+    # Group by dialogue_id
+    grouped = {}
+    for r in results:
+        if "error" in r:
+            continue
+        dialogue_id = r.get("dialogue_id")
+        rag_enabled = r.get("rag_enabled", False)
+
+        if dialogue_id not in grouped:
+            grouped[dialogue_id] = {}
+
+        key = "rag" if rag_enabled else "baseline"
+        grouped[dialogue_id][key] = r["evaluation"]
+
+    # Calculate paired differences
+    pairs = []
+    for dialogue_id, data in grouped.items():
+        if "rag" in data and "baseline" in data:
+            rag_eval = data["rag"]
+            baseline_eval = data["baseline"]
+
+            pair_diff = {
+                "dialogue_id": dialogue_id,
+                "consistency_diff": rag_eval["GlobalPersonalizationConsistency"]["score"] - baseline_eval["GlobalPersonalizationConsistency"]["score"],
+                "synthesis_diff": rag_eval["CumulativeInformationSynthesis"]["score"] - baseline_eval["CumulativeInformationSynthesis"]["score"],
+                "trajectory_diff": rag_eval["InteractionTrajectory"]["score"] - baseline_eval["InteractionTrajectory"]["score"],
+                "hallucination_diff": rag_eval["AggregateHallucinationCheck"]["score"] - baseline_eval["AggregateHallucinationCheck"]["score"],
+                "tone_diff": rag_eval["ToneConsistency"]["score"] - baseline_eval["ToneConsistency"]["score"],
+                "overall_diff": rag_eval.get("OverallScore", 0) - baseline_eval.get("OverallScore", 0),
+                "rag_scores": rag_eval,
+                "baseline_scores": baseline_eval
+            }
+            pairs.append(pair_diff)
+
+    if not pairs:
+        return {"error": "No paired dialogues found"}
+
+    # Calculate statistics
+    stats = {
+        "total_pairs": len(pairs),
+        "avg_consistency_diff": sum(p["consistency_diff"] for p in pairs) / len(pairs),
+        "avg_synthesis_diff": sum(p["synthesis_diff"] for p in pairs) / len(pairs),
+        "avg_trajectory_diff": sum(p["trajectory_diff"] for p in pairs) / len(pairs),
+        "avg_hallucination_diff": sum(p["hallucination_diff"] for p in pairs) / len(pairs),
+        "avg_tone_diff": sum(p["tone_diff"] for p in pairs) / len(pairs),
+        "avg_overall_diff": sum(p["overall_diff"] for p in pairs) / len(pairs),
+        "rag_better_count": sum(1 for p in pairs if p["overall_diff"] > 0.1),
+        "baseline_better_count": sum(1 for p in pairs if p["overall_diff"] < -0.1),
+        "tie_count": sum(1 for p in pairs if abs(p["overall_diff"]) <= 0.1),
+        "pairs": pairs
+    }
+
+    return stats
+
+def print_paired_comparison_report(paired_stats, output_path=None):
+    """
+    Print and optionally save paired comparison report.
+
+    Args:
+        paired_stats: Output from generate_paired_comparison
+        output_path: Optional path to save detailed paired results
+    """
+    if "error" in paired_stats:
+        print(f"\n⚠️  {paired_stats['error']}")
+        return
+
+    print("\n" + "="*60)
+    print("📊 PAIRED COMPARISON REPORT (RAG vs Baseline)")
+    print("="*60)
+
+    total = paired_stats["total_pairs"]
+    print(f"\n🔗 Total Paired Dialogues: {total}")
+
+    print("\n📈 Average Score Differences (RAG - Baseline):")
+    print(f"   Global Consistency:     {paired_stats['avg_consistency_diff']:+.2f}")
+    print(f"   Information Synthesis:  {paired_stats['avg_synthesis_diff']:+.2f}")
+    print(f"   Interaction Trajectory: {paired_stats['avg_trajectory_diff']:+.2f}")
+    print(f"   Hallucination Check:    {paired_stats['avg_hallucination_diff']:+.2f}")
+    print(f"   Tone Consistency:       {paired_stats['avg_tone_diff']:+.2f}")
+    print(f"   Overall Score:          {paired_stats['avg_overall_diff']:+.2f}")
+
+    rag_better = paired_stats["rag_better_count"]
+    baseline_better = paired_stats["baseline_better_count"]
+    tie = paired_stats["tie_count"]
+
+    print(f"\n🏆 Win/Loss Breakdown:")
+    print(f"   RAG Better:      {rag_better:3d} ({rag_better/total*100:.1f}%)")
+    print(f"   Baseline Better: {baseline_better:3d} ({baseline_better/total*100:.1f}%)")
+    print(f"   Tie (±0.1):      {tie:3d} ({tie/total*100:.1f}%)")
+
+    # Show top improvements and regressions
+    pairs_sorted = sorted(paired_stats["pairs"], key=lambda x: x["overall_diff"], reverse=True)
+
+    print(f"\n⬆️  Top 5 RAG Improvements:")
+    for i, pair in enumerate(pairs_sorted[:5], 1):
+        if pair["overall_diff"] > 0:
+            print(f"   {i}. {pair['dialogue_id'][:20]}... : +{pair['overall_diff']:.2f}")
+
+    print(f"\n⬇️  Top 5 RAG Regressions:")
+    for i, pair in enumerate(reversed(pairs_sorted[-5:]), 1):
+        if pair["overall_diff"] < 0:
+            print(f"   {i}. {pair['dialogue_id'][:20]}... : {pair['overall_diff']:.2f}")
+
+    # Save detailed paired results if requested
+    if output_path:
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(paired_stats, f, ensure_ascii=False, indent=2)
+        print(f"\n💾 Detailed paired comparison saved to: {output_path}")
+
 # -----------------------------------
 # Main
 # -----------------------------------
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=str, required=True, help="Input dialogues JSON file")
-    parser.add_argument("--output", type=str, default="aggregate_eval.json", help="Output evaluation JSON file")
-    parser.add_argument("--profiles", type=str, default=None, help="User profiles JSON file (optional)")
+    parser = argparse.ArgumentParser(
+        description="Evaluate AI Shopping Assistant dialogues with RAG vs Baseline comparison"
+    )
+    parser.add_argument(
+        "--input",
+        type=str,
+        required=True,
+        help="Directory containing dialogue JSON files (auto-detects baseline/RAG) or single JSON file"
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="aggregate_eval.json",
+        help="Output file for evaluation results (default: aggregate_eval.json)"
+    )
+    parser.add_argument(
+        "--profiles",
+        type=str,
+        default='/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Multimodel_RAG_Indexing/user_profiles.json',
+        help="User profiles JSON file (optional, generated by generate_user_profiles.py)"
+    )
+    parser.add_argument(
+        "--paired-output",
+        type=str,
+        default=None,
+        help="Output file for paired comparison results (optional, e.g., paired_comparison.json)"
+    )
     args = parser.parse_args()
-    batch_evaluate(args.input, args.output, args.profiles)
+    batch_evaluate(args.input, args.output, args.profiles, args.paired_output)
