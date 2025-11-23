@@ -22,6 +22,15 @@ MAX_WORKERS = 5
 client = OpenAI()
 
 # -----------------------------------
+# Initialize OpenAI client
+# -----------------------------------
+api_key = os.getenv("OPENAI_KEY")
+if not api_key:
+    raise ValueError("Missing OPENAI_KEY in environment variables. Please add it to your .env file.")
+
+client = OpenAI(api_key=api_key)
+
+# -----------------------------------
 # The Aggregate Evaluation Prompt
 # -----------------------------------
 EVALUATION_PROMPT = """
@@ -32,9 +41,6 @@ Do NOT evaluate the User. Use the User's turns only to determine if the Agent's 
 ### 1. User Profile & Goal (The Target)
 Profile: {user_profile}
 Goal: {user_goal}
-
-### 2. Retrieved Knowledge (The Truth)
-{context_snippet}
 
 ### 3. The Interaction Log (Context)
 (Use this to check if the Agent answered questions correctly)
@@ -66,13 +72,7 @@ Goal: {user_goal}
 *   **3 (Passive):** The agent answered questions accurately but waited for the user to lead.
 *   **5 (Strategic):** The agent's responses followed a logical arc: Clarify -> Recommend -> Refine -> Close.
 
-#### 4. Aggregate Hallucination Check (AHC)
-*Did the Agent make ANY factual errors across the entire stream?*
-*   **1 (Hallucinated):** At least one response contained invented specs, prices, or fake inventory.
-*   **3 (Minor Drift):** Mostly accurate, but some details were vague or slightly misrepresented compared to the Context.
-*   **5 (100% Grounded):** Every single claim made by the agent across the whole dialogue is supported by the Retrieved Knowledge.
-
-#### 5. Tone Consistency (TC)
+#### 4. Tone Consistency (TC)
 *Was the agent's voice stable?*
 *   **1 (Erratic):** Switched between robotic formal ("As an AI...") and casual ("Hey there!") randomly.
 *   **5 (Unified Voice):** Maintained a consistent, professional, and empathetic shopping persona from Hello to Goodbye.
@@ -123,21 +123,47 @@ def extract_agent_stream(dialogue_history):
     
     return "\n\n".join(agent_turns)
 
-def get_user_profile(entry):
+def get_user_profile(entry, loaded_profiles=None):
+    """
+    Get user profile from loaded profiles file or fallback to entry's user_profile field.
+
+    Args:
+        entry: The dialogue entry
+        loaded_profiles: Dict of user_id -> profile (from user_profiles.json)
+
+    Returns:
+        Formatted profile string
+    """
+    # Try to get from loaded profiles first
+    if loaded_profiles:
+        # Try to get user_id from entry (could be "user_id" field or extracted from "dialogue_id")
+        user_id = entry.get("user_id")
+        if not user_id and "dialogue_id" in entry:
+            # Try extracting from dialogue_id (e.g., "USER123_session1" -> "USER123")
+            dialogue_id = entry.get("dialogue_id", "")
+            user_id = dialogue_id.split("_")[0] if "_" in dialogue_id else dialogue_id
+
+        if user_id and user_id in loaded_profiles:
+            profile = loaded_profiles[user_id]
+            if profile:
+                return ", ".join([f"{k}: {v}" for k, v in profile.items()])
+
+    # Fallback to entry's user_profile field
     profile = entry.get("user_profile", {})
-    if not profile: return "No Profile Available."
+    if not profile:
+        return "No Profile Available."
     return ", ".join([f"{k}: {v}" for k, v in profile.items()])
 
-def evaluate_single_entry(entry):
+def evaluate_single_entry(entry, loaded_profiles=None):
     # 1. Prepare Context (User + Agent)
     full_dialogue = format_full_dialogue(entry.get("dialogue_history", []))
-    
+
     # 2. Prepare Target (Agent Only)
     agent_stream = extract_agent_stream(entry.get("dialogue_history", []))
-    
+
     user_goal = entry.get("user_goal", "Shopping")
     context_snippet = str(entry.get("retrieved_context", "No Context"))
-    user_profile = get_user_profile(entry)
+    user_profile = get_user_profile(entry, loaded_profiles)
 
     full_prompt = EVALUATION_PROMPT.format(
         user_profile=user_profile,
@@ -167,18 +193,29 @@ def evaluate_single_entry(entry):
     except Exception as e:
         return {"dialogue_id": entry.get("dialogue_id"), "error": str(e)}
 
-def batch_evaluate(input_path, output_path):
+def batch_evaluate(input_path, output_path, profiles_path=None):
     if not os.path.exists(input_path):
         raise FileNotFoundError(f"Input file not found: {input_path}")
-        
+
     with open(input_path, "r", encoding="utf-8") as f:
         dialogues = json.load(f)
 
+    # Load user profiles if provided
+    loaded_profiles = None
+    if profiles_path:
+        if not os.path.exists(profiles_path):
+            print(f"⚠️  Warning: Profiles file not found: {profiles_path}")
+            print("   Falling back to user_profile field in dialogues")
+        else:
+            with open(profiles_path, "r", encoding="utf-8") as f:
+                loaded_profiles = json.load(f)
+            print(f"✓ Loaded {len(loaded_profiles)} user profiles from {profiles_path}")
+
     print(f"🚀 Evaluating AGGREGATE performance for {len(dialogues)} dialogues...")
-    
+
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = [executor.submit(evaluate_single_entry, d) for d in dialogues]
+        futures = [executor.submit(evaluate_single_entry, d, loaded_profiles) for d in dialogues]
         for future in concurrent.futures.as_completed(futures):
             results.append(future.result())
 
@@ -231,7 +268,8 @@ def print_aggregate_report(results):
 # -----------------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", type=str, required=True)
-    parser.add_argument("--output", type=str, default="aggregate_eval.json")
+    parser.add_argument("--input", type=str, required=True, help="Input dialogues JSON file")
+    parser.add_argument("--output", type=str, default="aggregate_eval.json", help="Output evaluation JSON file")
+    parser.add_argument("--profiles", type=str, default=None, help="User profiles JSON file (optional)")
     args = parser.parse_args()
-    batch_evaluate(args.input, args.output)
+    batch_evaluate(args.input, args.output, args.profiles)
