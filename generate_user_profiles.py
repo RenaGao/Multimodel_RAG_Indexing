@@ -313,7 +313,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--questions",
         type=str,
-        default="./questions_v2/Amazon_Fashion_questions_20251121_222830.json",
+        default="/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Multimodel_RAG_Indexing/questions_v2/Amazon_Fashion_questions_20251121_222830.json",
         help="Path to questions JSON file (e.g., Amazon_Fashion_questions_20251121_222830.json)"
     )
     parser.add_argument(
