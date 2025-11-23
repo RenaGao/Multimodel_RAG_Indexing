@@ -252,6 +252,7 @@ def load_questions_data(questions_file: Path) -> Dict[str, dict]:
 def find_questions_file_for_category(category: str) -> Path:
     """
     Automatically find the latest questions file for a given category.
+    Searches in ../questions directory for {category}_questions_*.json
 
     Args:
         category: Category name (e.g., "Amazon_Fashion")
@@ -259,27 +260,21 @@ def find_questions_file_for_category(category: str) -> Path:
     Returns:
         Path to questions file, or None if not found
     """
-    # Try multiple possible locations
-    possible_dirs = [
-        Path("../questions"),
-        Path("./questions"),
-        Path("/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/questions"),
-        Path("/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Multimodel_RAG_Indexing/questions_v2")
-    ]
+    questions_dir = Path("../questions")
 
-    for questions_dir in possible_dirs:
-        if not questions_dir.exists():
-            continue
+    if not questions_dir.exists():
+        print(f"[WARN] Questions directory not found: {questions_dir}")
+        return None
 
-        # Find matching files: {category}_questions_*.json
-        pattern = f"{category}_questions_*.json"
-        matching_files = list(questions_dir.glob(pattern))
+    # Find matching files: {category}_questions_*.json
+    pattern = f"{category}_questions_*.json"
+    matching_files = list(questions_dir.glob(pattern))
 
-        if matching_files:
-            # If multiple files, choose the latest (by filename, timestamp in name)
-            latest_file = sorted(matching_files)[-1]
-            print(f"[INFO] Auto-found questions file: {latest_file}")
-            return latest_file
+    if matching_files:
+        # If multiple files, choose the latest (by filename, timestamp in name)
+        latest_file = sorted(matching_files)[-1]
+        print(f"[INFO] Auto-found questions file: {latest_file}")
+        return latest_file
 
     print(f"[WARN] No questions file found for category: {category}")
     return None
