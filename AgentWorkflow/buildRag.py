@@ -685,6 +685,14 @@ def build_all_user_review_embeddings(
 
     for user_id in tqdm(sorted(common_users), desc="Building user review embeddings"):
         try:
+            # Check if embeddings already exist for this user
+            emb_path = output_dir / f"{user_id}_review_embs.pkl"
+            meta_path = output_dir / f"{user_id}_review_meta.pkl"
+
+            if emb_path.exists() and meta_path.exists():
+                success_count += 1
+                continue
+
             # Get user's purchase data
             user_purchases = user_data[user_id]
 
@@ -744,15 +752,38 @@ def build_item_index_for_category(category: str, questions_file: Path = None):
     print(f"\n[INFO] Building item index with model: {model_suffix}")
     print(f"[INFO] Output directory: {item_dir}")
 
+    # Check what's already complete
+    status = check_category_complete(category, model_suffix)
+
+    skip_item_meta = status["meta_complete"] and status.get("item_count_valid", True)
+    skip_product_review = status["product_review_complete"]
+    skip_user_embeddings = status["user_review_complete"]
+
+    if skip_item_meta and skip_product_review and skip_user_embeddings:
+        print(f"[INFO] Category {category} is already complete, nothing to rebuild")
+        return
+
+    # Show what needs to be rebuilt
+    rebuild_parts = []
+    if not skip_item_meta:
+        rebuild_parts.append("item metadata")
+    if not skip_product_review:
+        rebuild_parts.append("product reviews")
+    if not skip_user_embeddings:
+        rebuild_parts.append("user embeddings")
+
+    print(f"[INFO] Will rebuild: {', '.join(rebuild_parts)}")
+
+    # If we need to rebuild item meta, we must also rebuild product reviews (due to doc_order dependency)
+    if not skip_item_meta:
+        skip_product_review = False
+        print(f"[INFO] Item metadata rebuild required, will also rebuild product reviews (dependency)")
+
     # Load data files
     user_data_file, item_review_file = get_files_for_category(category)
 
     print(f"[INFO] Loading user data from {user_data_file}")
     all_users = load_json(user_data_file)
-
-    print(f"[INFO] Loading item review data from {item_review_file}")
-    item_review_data = load_json(item_review_file)
-    # Note: item_review_data keys are already parent_asin
 
     # Load user-target product mapping if questions file provided
     user_target_map = None
@@ -760,90 +791,146 @@ def build_item_index_for_category(category: str, questions_file: Path = None):
         print(f"[INFO] Loading user-target product mappings from {questions_file}")
         user_target_map = load_user_target_products(questions_file)
 
-    # Build item metadata map from user_data
-    print(f"[INFO] Building item metadata map...")
-    item_meta_map = build_item_meta_map(all_users)
-    print(f"[INFO] Extracted metadata for {len(item_meta_map)} items")
+    # Variables that might be needed later
+    embedder_instance = None
+    docs = None
+    doc_order = None
 
-    # Build one document per item (metadata only)
-    print(f"[INFO] Building item documents (one per item, metadata only)")
-    docs = normalize_item_docs_from_itemReview(item_review_data, item_meta_map)
+    # ===== ITEM METADATA BUILDING =====
+    if not skip_item_meta:
+        print(f"\n[INFO] ===== Building Item Metadata =====")
 
-    if not docs:
-        print(f"[WARN] No docs built for category={category}")
-        return
+        print(f"[INFO] Loading item review data from {item_review_file}")
+        item_review_data = load_json(item_review_file)
 
-    print(f"[INFO] Generated {len(docs)} documents")
+        # Build item metadata map from user_data
+        print(f"[INFO] Building item metadata map...")
+        item_meta_map = build_item_meta_map(all_users)
+        print(f"[INFO] Extracted metadata for {len(item_meta_map)} items")
 
-    # Save normalized docs as JSON
-    normalized_docs_path = item_dir / "normalized_docs.json"
-    with normalized_docs_path.open("w", encoding="utf-8") as f:
-        json.dump(docs, f, ensure_ascii=False, indent=2)
-    print(f"[SAVE] normalized docs -> {normalized_docs_path}")
+        # Build one document per item (metadata only)
+        print(f"[INFO] Building item documents (one per item, metadata only)")
+        docs = normalize_item_docs_from_itemReview(item_review_data, item_meta_map)
 
-    # Encode all fields as text
-    texts = [
-        " ".join(filter(None, [
-            d["title"],
-            d["brand"],
-            d["price"],
-            f"Rating: {d['rating']}" if d.get("rating") is not None else "",
-            f"Reviews: {d['num_reviews']}",
-            d["text"]
-        ]))
-        for d in docs
-    ]
+        if not docs:
+            print(f"[WARN] No docs built for category={category}")
+            return
 
-    embedder_instance = Embedder()
-    emb = embedder_instance.encode(texts, batch_size=16)
+        print(f"[INFO] Generated {len(docs)} documents")
 
-    # Generate review embeddings
-    print(f"[INFO] Generating review embeddings...")
-    doc_order = [d["item_id"] for d in docs]
-    review_emb = build_review_embeddings(item_review_data, doc_order, embedder_instance, user_target_map)
-    print(f"[INFO] Generated review embeddings: {review_emb.shape}")
+        # Save normalized docs as JSON
+        normalized_docs_path = item_dir / "normalized_docs.json"
+        with normalized_docs_path.open("w", encoding="utf-8") as f:
+            json.dump(docs, f, ensure_ascii=False, indent=2)
+        print(f"[SAVE] normalized docs -> {normalized_docs_path}")
 
-    meta_path = item_dir / "meta.pkl"
-    matrix_path = item_dir / "matrix.pkl"
-    embedder_path = item_dir / "embedder.pkl"
+        # Encode all fields as text
+        texts = [
+            " ".join(filter(None, [
+                d["title"],
+                d["brand"],
+                d["price"],
+                f"Rating: {d['rating']}" if d.get("rating") is not None else "",
+                f"Reviews: {d['num_reviews']}",
+                d["text"]
+            ]))
+            for d in docs
+        ]
 
-    import pickle
-    with meta_path.open("wb") as f:
-        pickle.dump({"docs": docs, "texts": texts}, f)
+        embedder_instance = Embedder()
+        emb = embedder_instance.encode(texts, batch_size=16)
 
-    with matrix_path.open("wb") as f:
-        pickle.dump(emb, f)
+        meta_path = item_dir / "meta.pkl"
+        matrix_path = item_dir / "matrix.pkl"
+        embedder_path = item_dir / "embedder.pkl"
 
-    # Save review embeddings
-    review_matrix_path = item_dir / "review_matrix.pkl"
-    with review_matrix_path.open("wb") as f:
-        pickle.dump(review_emb, f)
-    print(f"[SAVE] review embeddings -> {review_matrix_path}")
+        import pickle
+        with meta_path.open("wb") as f:
+            pickle.dump({"docs": docs, "texts": texts}, f)
 
-    with embedder_path.open("wb") as f:
-        pickle.dump({"kind": "sbert", "model": "Qwen/Qwen3-Embedding-8B", "dimension": 4096}, f)
+        with matrix_path.open("wb") as f:
+            pickle.dump(emb, f)
 
-    print(f"[SAVE] item index -> {item_dir}")
+        with embedder_path.open("wb") as f:
+            pickle.dump({"kind": "sbert", "model": "Qwen/Qwen3-Embedding-8B", "dimension": 4096}, f)
 
-    # Build user review embeddings (if questions file provided)
-    if questions_file and questions_file.exists():
-        print(f"\n[INFO] ====== Building User Review Embeddings ======")
-        questions_data = load_questions_data(questions_file)
+        print(f"[SAVE] item metadata -> {item_dir}")
+        doc_order = [d["item_id"] for d in docs]
 
-        if questions_data:
-            stats = build_all_user_review_embeddings(
-                category=category,
-                user_data=all_users,
-                questions_data=questions_data,
-                embedder=embedder_instance  # Reuse the existing embedder
-            )
+    else:
+        print(f"\n[INFO] Item metadata already complete, skipping...")
 
-            print(f"\n[DONE] User review embeddings complete:")
-            print(f"       Successfully processed: {stats['success']} users")
-            print(f"       Skipped: {stats['skipped']} users")
-            print(f"       Total: {stats['total']} users")
+    # ===== PRODUCT REVIEW EMBEDDINGS =====
+    if not skip_product_review:
+        print(f"\n[INFO] ===== Building Product Review Embeddings =====")
+
+        # Load item_review_data if not already loaded
+        if 'item_review_data' not in locals():
+            print(f"[INFO] Loading item review data from {item_review_file}")
+            item_review_data = load_json(item_review_file)
+
+        # Load docs and create embedder if we skipped item meta building
+        if docs is None:
+            import pickle
+            normalized_docs_path = item_dir / "normalized_docs.json"
+            if normalized_docs_path.exists():
+                with normalized_docs_path.open("r", encoding="utf-8") as f:
+                    docs = json.load(f)
+                doc_order = [d["item_id"] for d in docs]
+            else:
+                print(f"[ERROR] Cannot build product reviews without docs")
+                return
+
+        # Create embedder if not already created
+        if embedder_instance is None:
+            embedder_instance = Embedder()
+
+        # Generate review embeddings
+        print(f"[INFO] Generating review embeddings...")
+        review_emb = build_review_embeddings(item_review_data, doc_order, embedder_instance, user_target_map)
+        print(f"[INFO] Generated review embeddings: {review_emb.shape}")
+
+        # Save review embeddings
+        import pickle
+        review_matrix_path = item_dir / "review_matrix.pkl"
+        with review_matrix_path.open("wb") as f:
+            pickle.dump(review_emb, f)
+        print(f"[SAVE] review embeddings -> {review_matrix_path}")
+
+    else:
+        print(f"\n[INFO] Product review embeddings already complete, skipping...")
+
+    # ===== USER REVIEW EMBEDDINGS =====
+    if not skip_user_embeddings:
+        # Build user review embeddings (if questions file provided)
+        if questions_file and questions_file.exists():
+            print(f"\n[INFO] ===== Building User Review Embeddings =====")
+            questions_data = load_questions_data(questions_file)
+
+            if questions_data:
+                # Create embedder if not already created
+                if embedder_instance is None:
+                    embedder_instance = Embedder()
+
+                stats = build_all_user_review_embeddings(
+                    category=category,
+                    user_data=all_users,
+                    questions_data=questions_data,
+                    embedder=embedder_instance  # Reuse the existing embedder
+                )
+
+                print(f"\n[DONE] User review embeddings complete:")
+                print(f"       Successfully processed: {stats['success']} users")
+                print(f"       Skipped: {stats['skipped']} users")
+                print(f"       Total: {stats['total']} users")
+            else:
+                print(f"[WARN] No questions data loaded, skipping user review embeddings")
         else:
-            print(f"[WARN] No questions data loaded, skipping user review embeddings")
+            print(f"[WARN] No questions file provided, cannot build user review embeddings")
+    else:
+        print(f"\n[INFO] User review embeddings already complete, skipping...")
+
+    print(f"\n[DONE] Build complete for category: {category}")
 
 
 def normalize_user_profile_for_user(all_users: Any, only_user_id: str) -> List[Dict[str, Any]]:
