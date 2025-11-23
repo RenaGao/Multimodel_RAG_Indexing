@@ -84,7 +84,6 @@ Goal: {user_goal}
   "GlobalPersonalizationConsistency": {{ "score": int, "reason": "string" }},
   "CumulativeInformationSynthesis": {{ "score": int, "reason": "string" }},
   "InteractionTrajectory": {{ "score": int, "reason": "string" }},
-  "AggregateHallucinationCheck": {{ "score": int, "reason": "string" }},
   "ToneConsistency": {{ "score": int, "reason": "string" }},
   "OverallScore": float,
   "Major_Flaws_Detected": ["list", "of", "flaws"]
@@ -321,18 +320,17 @@ def batch_evaluate(input_path, output_path, profiles_path=None, paired_output_pa
 def print_aggregate_report(results):
     """Compares RAG vs No-RAG on long-context consistency."""
     stats = {
-        "rag": {"consistency": [], "hallucination": [], "flaws": {}},
-        "no_rag": {"consistency": [], "hallucination": [], "flaws": {}}
+        "rag": {"consistency": [], "flaws": {}},
+        "no_rag": {"consistency": [], "flaws": {}}
     }
 
     for r in results:
         if "error" in r: continue
         key = "rag" if r.get("rag_enabled") else "no_rag"
         eval_data = r["evaluation"]
-        
+
         stats[key]["consistency"].append(eval_data["GlobalPersonalizationConsistency"]["score"])
-        stats[key]["hallucination"].append(eval_data["AggregateHallucinationCheck"]["score"])
-        
+
         for flaw in eval_data.get("Major_Flaws_Detected", []):
             if flaw != "None":
                 stats[key]["flaws"][flaw] = stats[key]["flaws"].get(flaw, 0) + 1
@@ -341,15 +339,13 @@ def print_aggregate_report(results):
     print("-----------------------------------")
     for key in ["rag", "no_rag"]:
         cons = stats[key]["consistency"]
-        hal = stats[key]["hallucination"]
         count = len(cons)
         if count == 0: continue
-        
+
         print(f"\nConfiguration: {key.upper()}")
         print(f"  Samples: {count}")
         print(f"  🧠 Global Consistency: {sum(cons)/count:.2f} / 5.0")
-        print(f"  🛡️ Aggregate Safety:   {sum(hal)/count:.2f} / 5.0")
-        
+
         print("  🚩 Common Flaws (Whole Dialogue):")
         sorted_flaws = sorted(stats[key]["flaws"].items(), key=lambda x: x[1], reverse=True)
         if not sorted_flaws:
@@ -393,7 +389,6 @@ def generate_paired_comparison(results):
                 "consistency_diff": rag_eval["GlobalPersonalizationConsistency"]["score"] - baseline_eval["GlobalPersonalizationConsistency"]["score"],
                 "synthesis_diff": rag_eval["CumulativeInformationSynthesis"]["score"] - baseline_eval["CumulativeInformationSynthesis"]["score"],
                 "trajectory_diff": rag_eval["InteractionTrajectory"]["score"] - baseline_eval["InteractionTrajectory"]["score"],
-                "hallucination_diff": rag_eval["AggregateHallucinationCheck"]["score"] - baseline_eval["AggregateHallucinationCheck"]["score"],
                 "tone_diff": rag_eval["ToneConsistency"]["score"] - baseline_eval["ToneConsistency"]["score"],
                 "overall_diff": rag_eval.get("OverallScore", 0) - baseline_eval.get("OverallScore", 0),
                 "rag_scores": rag_eval,
@@ -410,7 +405,6 @@ def generate_paired_comparison(results):
         "avg_consistency_diff": sum(p["consistency_diff"] for p in pairs) / len(pairs),
         "avg_synthesis_diff": sum(p["synthesis_diff"] for p in pairs) / len(pairs),
         "avg_trajectory_diff": sum(p["trajectory_diff"] for p in pairs) / len(pairs),
-        "avg_hallucination_diff": sum(p["hallucination_diff"] for p in pairs) / len(pairs),
         "avg_tone_diff": sum(p["tone_diff"] for p in pairs) / len(pairs),
         "avg_overall_diff": sum(p["overall_diff"] for p in pairs) / len(pairs),
         "rag_better_count": sum(1 for p in pairs if p["overall_diff"] > 0.1),
@@ -444,7 +438,6 @@ def print_paired_comparison_report(paired_stats, output_path=None):
     print(f"   Global Consistency:     {paired_stats['avg_consistency_diff']:+.2f}")
     print(f"   Information Synthesis:  {paired_stats['avg_synthesis_diff']:+.2f}")
     print(f"   Interaction Trajectory: {paired_stats['avg_trajectory_diff']:+.2f}")
-    print(f"   Hallucination Check:    {paired_stats['avg_hallucination_diff']:+.2f}")
     print(f"   Tone Consistency:       {paired_stats['avg_tone_diff']:+.2f}")
     print(f"   Overall Score:          {paired_stats['avg_overall_diff']:+.2f}")
 

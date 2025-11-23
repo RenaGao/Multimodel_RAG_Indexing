@@ -222,6 +222,135 @@ def load_user_target_products(questions_file: Path) -> Dict[str, str]:
     print(f"[INFO] Loaded {len(user_target_map)} user-target product mappings")
     return user_target_map
 
+def load_questions_data(questions_file: Path) -> Dict[str, dict]:
+    """
+    Load questions data and return dict keyed by user_id.
+
+    Args:
+        questions_file: Path to questions JSON file
+
+    Returns:
+        Dict mapping user_id to question entry (contains target_product, etc.)
+    """
+    if not questions_file.exists():
+        print(f"[WARN] Questions file not found: {questions_file}")
+        return {}
+
+    data = load_json(questions_file)
+    if not data:
+        return {}
+
+    questions_dict = {}
+    for entry in data:
+        user_id = entry.get("user_id")
+        if user_id:
+            questions_dict[user_id] = entry
+
+    print(f"[INFO] Loaded questions for {len(questions_dict)} users")
+    return questions_dict
+
+def find_questions_file_for_category(category: str) -> Path:
+    """
+    Automatically find the latest questions file for a given category.
+
+    Args:
+        category: Category name (e.g., "Amazon_Fashion")
+
+    Returns:
+        Path to questions file, or None if not found
+    """
+    # Try multiple possible locations
+    possible_dirs = [
+        Path("../questions"),
+        Path("./questions"),
+        Path("/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/questions"),
+        Path("/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Multimodel_RAG_Indexing/questions_v2")
+    ]
+
+    for questions_dir in possible_dirs:
+        if not questions_dir.exists():
+            continue
+
+        # Find matching files: {category}_questions_*.json
+        pattern = f"{category}_questions_*.json"
+        matching_files = list(questions_dir.glob(pattern))
+
+        if matching_files:
+            # If multiple files, choose the latest (by filename, timestamp in name)
+            latest_file = sorted(matching_files)[-1]
+            print(f"[INFO] Auto-found questions file: {latest_file}")
+            return latest_file
+
+    print(f"[WARN] No questions file found for category: {category}")
+    return None
+
+def check_category_complete(category: str, model_suffix: str = "qwen3") -> Dict:
+    """
+    Check if a category's index is completely built.
+    Checks three parts:
+    1. Item metadata (meta.pkl, normalized_docs.json, embedder.pkl, matrix.pkl)
+    2. Product review embeddings (review_matrix.pkl)
+    3. User review embeddings (user_review_embeddings/ directory with paired files)
+
+    Args:
+        category: Category name (e.g., "Amazon_Fashion")
+        model_suffix: Model suffix for item index directory
+
+    Returns:
+        Dict with status information
+    """
+    item_dir = CATALOG_DIR / category / f"item_index_{model_suffix}"
+    user_review_dir = CATALOG_DIR / category / "user_review_embeddings"
+
+    # 1. Check item metadata files
+    meta_files = ["meta.pkl", "normalized_docs.json", "embedder.pkl", "matrix.pkl"]
+    missing_meta = [f for f in meta_files if not (item_dir / f).exists()]
+    meta_complete = len(missing_meta) == 0
+
+    # 2. Check product review embedding
+    review_emb_complete = (item_dir / "review_matrix.pkl").exists()
+
+    # 3. Check user review embeddings
+    user_review_complete = False
+    user_count = 0
+
+    if user_review_dir.exists():
+        emb_files = list(user_review_dir.glob("*_review_embs.pkl"))
+        meta_files_list = list(user_review_dir.glob("*_review_meta.pkl"))
+
+        # Both should have same count and at least 5 users
+        if len(emb_files) == len(meta_files_list) and len(emb_files) >= 5:
+            user_count = len(emb_files)
+            user_review_complete = True
+        else:
+            user_count = len(emb_files)
+
+    # All three parts must be complete
+    complete = meta_complete and review_emb_complete and user_review_complete
+
+    # Generate detailed status
+    status_parts = []
+    if not meta_complete:
+        status_parts.append(f"Missing item meta: {', '.join(missing_meta)}")
+    if not review_emb_complete:
+        status_parts.append("Missing product review embedding")
+    if not user_review_complete:
+        if user_count == 0:
+            status_parts.append("No user review embeddings")
+        else:
+            status_parts.append(f"User review embeddings insufficient: {user_count} users (need >= 5)")
+
+    details = " | ".join(status_parts) if status_parts else f"Complete ({user_count} users)"
+
+    return {
+        "complete": complete,
+        "meta_complete": meta_complete,
+        "product_review_complete": review_emb_complete,
+        "user_review_complete": user_review_complete,
+        "user_count": user_count,
+        "details": details
+    }
+
 def build_review_embeddings(
     item_review_data: dict,
     doc_order: List[str],
@@ -345,6 +474,176 @@ def normalize_item_docs_from_itemReview(
 
     return docs
 
+def build_user_review_embeddings_for_single_user(
+    user_id: str,
+    user_purchases: List,
+    target_product_asin: str,
+    embedder: Embedder,
+    output_dir: Path
+) -> bool:
+    """
+    Build review embeddings for a single user (excluding target_product).
+
+    Args:
+        user_id: User identifier
+        user_purchases: List of [(product_meta, [reviews])] for this user
+        target_product_asin: parent_asin of target product to exclude
+        embedder: Embedder instance for generating embeddings
+        output_dir: Directory to save embeddings
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    # Collect all reviews except target_product
+    all_reviews = []
+    review_texts = []
+
+    for block in user_purchases:
+        if not isinstance(block, list) or len(block) < 2:
+            continue
+
+        product_meta = block[0] if isinstance(block[0], dict) else None
+        reviews = block[1] if len(block) > 1 and isinstance(block[1], list) else []
+
+        if not product_meta:
+            continue
+
+        current_product_asin = product_meta.get("parent_asin")
+
+        # Skip target product
+        if current_product_asin == target_product_asin:
+            continue
+
+        # Process each review
+        for review in reviews:
+            if not isinstance(review, dict):
+                continue
+
+            review_text = review.get("text", "").strip()
+            if not review_text:
+                continue
+
+            # Enrich review with product context
+            enriched_review = {
+                "review_text": review_text,
+                "rating": review.get("rating"),
+                "title": review.get("title", ""),
+                "product_title": product_meta.get("title", ""),
+                "product_brand": product_meta.get("store", ""),
+                "product_price": product_meta.get("price"),
+                "product_id": current_product_asin,
+                "timestamp": review.get("timestamp", ""),
+            }
+
+            all_reviews.append(enriched_review)
+            review_texts.append(review_text)
+
+    if not all_reviews:
+        return False
+
+    # Generate embeddings
+    embeddings = embedder.encode(review_texts, batch_size=32)
+
+    # Create metadata
+    from datetime import datetime
+    metadata = {
+        "user_id": user_id,
+        "reviews": all_reviews,
+        "embedding_dim": embeddings.shape[1],
+        "num_reviews": len(all_reviews),
+        "model": "Qwen/Qwen3-Embedding-8B",
+        "target_product_excluded": target_product_asin,
+        "created_at": datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    }
+
+    # Save embeddings and metadata
+    emb_path = output_dir / f"{user_id}_review_embs.pkl"
+    meta_path = output_dir / f"{user_id}_review_meta.pkl"
+
+    import pickle
+    with emb_path.open("wb") as f:
+        pickle.dump(embeddings, f)
+
+    with meta_path.open("wb") as f:
+        pickle.dump(metadata, f)
+
+    return True
+
+def build_all_user_review_embeddings(
+    category: str,
+    user_data: dict,
+    questions_data: dict,
+    embedder: Embedder
+) -> Dict[str, int]:
+    """
+    Build review embeddings for all users in the dataset.
+
+    Args:
+        category: Category name (e.g., "Amazon_Fashion")
+        user_data: Dict mapping user_id to purchase data
+        questions_data: Dict mapping user_id to question entry (contains target_product)
+        embedder: Embedder instance for generating embeddings
+
+    Returns:
+        Dict with statistics (success_count, skip_count)
+    """
+    # Create output directory
+    output_dir = CATALOG_DIR / category / "user_review_embeddings"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"[INFO] User review embeddings output: {output_dir}")
+
+    # Find users that exist in both datasets
+    common_users = set(user_data.keys()) & set(questions_data.keys())
+    print(f"[INFO] Found {len(common_users)} users in both datasets")
+
+    success_count = 0
+    skip_count = 0
+
+    for user_id in tqdm(sorted(common_users), desc="Building user review embeddings"):
+        try:
+            # Get user's purchase data
+            user_purchases = user_data[user_id]
+
+            # Get target product from questions data
+            target_product = questions_data[user_id].get("target_product")
+
+            if not target_product:
+                skip_count += 1
+                continue
+
+            target_product_meta = target_product.get("product_meta", {})
+            target_product_asin = target_product_meta.get("parent_asin")
+
+            if not target_product_asin:
+                skip_count += 1
+                continue
+
+            # Build embeddings for this user
+            success = build_user_review_embeddings_for_single_user(
+                user_id=user_id,
+                user_purchases=user_purchases,
+                target_product_asin=target_product_asin,
+                embedder=embedder,
+                output_dir=output_dir
+            )
+
+            if success:
+                success_count += 1
+            else:
+                skip_count += 1
+
+        except Exception as e:
+            print(f"[ERROR] Failed to process user {user_id}: {e}")
+            skip_count += 1
+            continue
+
+    return {
+        "success": success_count,
+        "skipped": skip_count,
+        "total": len(common_users)
+    }
+
 def build_item_index_for_category(category: str, questions_file: Path = None):
     """
     Build item index for a category
@@ -443,6 +742,26 @@ def build_item_index_for_category(category: str, questions_file: Path = None):
 
     print(f"[SAVE] item index -> {item_dir}")
 
+    # Build user review embeddings (if questions file provided)
+    if questions_file and questions_file.exists():
+        print(f"\n[INFO] ====== Building User Review Embeddings ======")
+        questions_data = load_questions_data(questions_file)
+
+        if questions_data:
+            stats = build_all_user_review_embeddings(
+                category=category,
+                user_data=all_users,
+                questions_data=questions_data,
+                embedder=embedder_instance  # Reuse the existing embedder
+            )
+
+            print(f"\n[DONE] User review embeddings complete:")
+            print(f"       Successfully processed: {stats['success']} users")
+            print(f"       Skipped: {stats['skipped']} users")
+            print(f"       Total: {stats['total']} users")
+        else:
+            print(f"[WARN] No questions data loaded, skipping user review embeddings")
+
 
 def normalize_user_profile_for_user(all_users: Any, only_user_id: str) -> List[Dict[str, Any]]:
     docs: List[Dict[str, Any]] = []
@@ -535,7 +854,6 @@ if __name__ == "__main__":
     parser.add_argument("--all", action="store_true", help="Build index for all available categories")
     parser.add_argument(
         "--questions-file",
-        default="/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/questions/Amazon_Fashion_questions_20251110_214618.json",
         help="Path to questions JSON file for excluding target product reviews (default: ../questions/Amazon_Fashion_questions_20251110_214618.json)"
     )
 
@@ -554,11 +872,55 @@ if __name__ == "__main__":
             cat = stem[: -len(suffix)]
             cat2file[cat] = p.name
 
+        print(f"\n{'='*80}")
+        print(f"Checking completeness for {len(cat2file)} categories...")
+        print(f"Check items: 1. Item Meta  2. Product Review Embedding  3. User Review Embedding")
+        print(f"{'='*80}\n")
+
+        # Check completion status for all categories
+        to_process = []
+        already_complete = []
+
+        for cat in sorted(cat2file.keys()):
+            status = check_category_complete(cat)
+
+            if status["complete"]:
+                already_complete.append(cat)
+                print(f"✅ {cat:30s} - {status['details']}")
+            else:
+                to_process.append(cat)
+                print(f"⚠️  {cat:30s} - {status['details']}")
+
+        # Display statistics
+        print(f"\n{'='*80}")
+        print(f"Complete:   {len(already_complete)}/{len(cat2file)}")
+        print(f"To process: {len(to_process)}/{len(cat2file)}")
+        print(f"{'='*80}\n")
+
+        if not to_process:
+            print("[INFO] All categories are complete!")
         else:
-            for cat, fname in sorted(cat2file.items()):
-                print(f"\n===== Building item index for category: {cat} (from {fname}) =====")
-                build_item_index_for_category(cat, questions_path)
+            print(f"[INFO] Processing {len(to_process)} incomplete categories...\n")
+
+            # Process incomplete categories
+            for cat in to_process:
+                fname = cat2file[cat]
+                print(f"\n===== Building: {cat} (from {fname}) =====")
+
+                # Auto-find questions file for this category
+                questions_file = find_questions_file_for_category(cat)
+
+                build_item_index_for_category(cat, questions_file)
 
     elif args.category:
         print(f"\n===== Building item index for category: {args.category} =====")
+
+        # Determine questions file
+        if args.questions_file:
+            # Use user-specified questions file
+            questions_path = Path(args.questions_file)
+        else:
+            # Auto-find questions file
+            questions_path = find_questions_file_for_category(args.category)
+
         build_item_index_for_category(args.category, questions_path)
