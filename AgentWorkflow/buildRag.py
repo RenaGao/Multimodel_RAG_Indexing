@@ -537,7 +537,7 @@ def build_user_review_embeddings_for_single_user(
         return False
 
     # Generate embeddings
-    embeddings = embedder.encode(review_texts, batch_size=32)
+    embeddings = embedder.encode(review_texts, batch_size=16)
 
     # Create metadata
     from datetime import datetime
