@@ -8,7 +8,9 @@ Modular Structure:
 - embedder: Embedder class for generating embeddings
 - data_loader: Data loading and JSON utilities
 - text_processor: Text construction and processing
-- legacy_bridge: Bridge to original file functions (temporary)
+- validator: Validation and completeness checking
+- document_builder: Document normalization
+- index_builder: Index building functions
 """
 
 # Configuration
@@ -40,15 +42,21 @@ from .data_loader import (
 # Text processing
 from .text_processor import construct_item_search_text
 
-# Legacy bridge (temporary - imports from original file)
-from .legacy_bridge import (
-    check_category_complete,
-    build_review_embeddings,
+# Validation
+from .validator import check_category_complete
+
+# Document building
+from .document_builder import (
     normalize_item_docs_from_itemReview,
+    normalize_user_profile_for_user
+)
+
+# Index building
+from .index_builder import (
+    build_review_embeddings,
     build_user_review_embeddings_for_single_user,
     build_all_user_review_embeddings,
     build_item_index_for_category,
-    normalize_user_profile_for_user,
     build_user_index_for
 )
 
@@ -76,13 +84,15 @@ __all__ = [
     'find_questions_file_for_category',
     # Text processor
     'construct_item_search_text',
-    # Legacy bridge
+    # Validator
     'check_category_complete',
-    'build_review_embeddings',
+    # Document builder
     'normalize_item_docs_from_itemReview',
+    'normalize_user_profile_for_user',
+    # Index builder
+    'build_review_embeddings',
     'build_user_review_embeddings_for_single_user',
     'build_all_user_review_embeddings',
     'build_item_index_for_category',
-    'normalize_user_profile_for_user',
     'build_user_index_for'
 ]
