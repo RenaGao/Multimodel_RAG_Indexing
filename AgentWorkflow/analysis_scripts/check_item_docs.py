@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 import sys
 
 # Import functions from buildRag.py
-from buildRag import (
+from AgentWorkflow.buildRag_old import (
     normalize_item_docs_from_itemReview,
     load_json,
     get_files_for_category,
