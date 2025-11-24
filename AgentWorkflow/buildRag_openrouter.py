@@ -578,7 +578,7 @@ def build_review_embeddings(
 
     # Generate all embeddings at once (embedder.encode handles batching internally)
     print(f"[Phase 2/3] Encoding all reviews (batch_size=100 internally)...")
-    all_embeddings = embedder.encode(all_review_texts, batch_size=100)
+    all_embeddings = embedder.encode(all_review_texts, batch_size=500)
 
     print(f"[Phase 2/3] ✓ Generated {len(all_embeddings):,} embeddings")
     print(f"[Phase 2/3]   Embedding dimension: {all_embeddings.shape[1]}")
@@ -780,7 +780,7 @@ def build_user_review_embeddings_for_single_user(
         return False
 
     # Generate embeddings
-    embeddings = embedder.encode(review_texts, batch_size=100)
+    embeddings = embedder.encode(review_texts, batch_size=500)
 
     # Create metadata
     from datetime import datetime
@@ -994,7 +994,7 @@ def build_item_index_for_category(category: str, questions_file: Path = None):
         ]
 
         embedder_instance = Embedder()
-        emb = embedder_instance.encode(texts, batch_size=100)
+        emb = embedder_instance.encode(texts, batch_size=500)
 
         meta_path = item_dir / "meta.pkl"
         matrix_path = item_dir / "matrix.pkl"
@@ -1156,7 +1156,7 @@ def build_user_index_for(user_name: str, category: str):
     docs = normalize_user_profile_for_user(all_users, only_user_id=user_name)
 
     texts = [d["title"] + " " + d["text"] for d in docs]
-    emb = Embedder().encode(texts, batch_size=100)
+    emb = Embedder().encode(texts, batch_size=500)
 
     meta_path = user_dir / "meta.pkl"
     matrix_path = user_dir / "matrix.pkl"
