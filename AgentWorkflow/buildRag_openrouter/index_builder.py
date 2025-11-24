@@ -21,9 +21,9 @@ parent_dir = Path(__file__).parent.parent
 if str(parent_dir) not in sys.path:
     sys.path.insert(0, str(parent_dir))
 
-# Import the build functions that haven't been modularized yet
+# Import the build functions from the renamed original file
 # These are complex functions that will be migrated in Phase 2
-from buildRag_openrouter import (
+from buildRag_openrouter_original import (
     build_review_embeddings,
     build_user_review_embeddings_for_single_user,
     build_all_user_review_embeddings,
