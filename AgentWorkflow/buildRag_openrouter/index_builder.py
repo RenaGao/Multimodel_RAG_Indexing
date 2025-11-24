@@ -16,13 +16,12 @@ from datetime import datetime
 import numpy as np
 from tqdm import tqdm
 
-from .config import CATALOG_DIR, BATCH_SIZE
+from .config import CATALOG_DIR, BATCH_SIZE, get_files_for_category
 from .data_loader import (
     load_json,
     load_user_target_products,
     build_item_meta_map,
-    load_questions_data,
-    get_files_for_category
+    load_questions_data
 )
 from .embedder import Embedder
 from .validator import check_category_complete
