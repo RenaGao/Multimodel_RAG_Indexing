@@ -13,6 +13,19 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# ============================================================================
+# Batch Size Configuration
+# ============================================================================
+# Batch size: number of texts processed per batch
+# - Controls API call size (texts per request)
+# - Controls checkpoint frequency (via CHECKPOINT_INTERVAL)
+BATCH_SIZE = 1000
+
+# Checkpoint interval: save checkpoint every N batches
+# (saves every CHECKPOINT_INTERVAL * BATCH_SIZE texts)
+CHECKPOINT_INTERVAL = 50
+# ============================================================================
+
 # -------------------------------------
 # 0. Initialize OpenAI client
 # -------------------------------------
@@ -204,7 +217,7 @@ class Embedder:
 
         print(f"[Embedder] Client initialized successfully")
 
-    def encode(self, texts: List[str], batch_size: int = 100) -> np.ndarray:
+    def encode(self, texts: List[str], batch_size: int = BATCH_SIZE) -> np.ndarray:
         """
         Encode texts to embeddings using OpenRouter API with automatic retry.
 
@@ -669,12 +682,10 @@ def build_review_embeddings(
             start_batch = 0
 
     # Batch processing configuration
-    batch_size = 1000
-    checkpoint_interval = 50  # Save every 50 batches
-    total_batches = (total_reviews + batch_size - 1) // batch_size
+    total_batches = (total_reviews + BATCH_SIZE - 1) // BATCH_SIZE
 
     if start_batch == 0:
-        print(f"[Phase 2/3] Starting fresh encoding (batch_size={batch_size})...")
+        print(f"[Phase 2/3] Starting fresh encoding (batch_size={BATCH_SIZE})...")
     else:
         print(f"[Phase 2/3] Resuming encoding from batch {start_batch}...")
 
@@ -687,12 +698,12 @@ def build_review_embeddings(
                           initial=start_batch,
                           total=total_batches):
 
-        start_idx = batch_idx * batch_size
-        end_idx = min(start_idx + batch_size, total_reviews)
+        start_idx = batch_idx * BATCH_SIZE
+        end_idx = min(start_idx + BATCH_SIZE, total_reviews)
         batch_texts = all_review_texts[start_idx:end_idx]
 
         # Encode this batch (embedder.encode has internal retry logic)
-        batch_embeddings = embedder.encode(batch_texts, batch_size=100)
+        batch_embeddings = embedder.encode(batch_texts, batch_size=BATCH_SIZE)
 
         if isinstance(all_embeddings, list):
             all_embeddings.extend(batch_embeddings.tolist())
@@ -700,13 +711,13 @@ def build_review_embeddings(
             all_embeddings = batch_embeddings.tolist()
 
         # Save checkpoint periodically
-        if checkpoint_file and (batch_idx + 1) % checkpoint_interval == 0:
+        if checkpoint_file and (batch_idx + 1) % CHECKPOINT_INTERVAL == 0:
             checkpoint_data = {
                 'embeddings': all_embeddings,
                 'processed_batches': batch_idx + 1,
                 'total_batches': total_batches,
                 'total_reviews': total_reviews,
-                'batch_size': batch_size,
+                'batch_size': BATCH_SIZE,
                 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 'item_review_counts': item_review_counts
             }
@@ -931,7 +942,7 @@ def build_user_review_embeddings_for_single_user(
         return False
 
     # Generate embeddings
-    embeddings = embedder.encode(review_texts, batch_size=1000)
+    embeddings = embedder.encode(review_texts, batch_size=BATCH_SIZE)
 
     # Create metadata
     from datetime import datetime
@@ -1145,7 +1156,7 @@ def build_item_index_for_category(category: str, questions_file: Path = None):
         ]
 
         embedder_instance = Embedder()
-        emb = embedder_instance.encode(texts, batch_size=1000)
+        emb = embedder_instance.encode(texts, batch_size=BATCH_SIZE)
 
         meta_path = item_dir / "meta.pkl"
         matrix_path = item_dir / "matrix.pkl"
@@ -1313,7 +1324,7 @@ def build_user_index_for(user_name: str, category: str):
     docs = normalize_user_profile_for_user(all_users, only_user_id=user_name)
 
     texts = [d["title"] + " " + d["text"] for d in docs]
-    emb = Embedder().encode(texts, batch_size=1000)
+    emb = Embedder().encode(texts, batch_size=BATCH_SIZE)
 
     meta_path = user_dir / "meta.pkl"
     matrix_path = user_dir / "matrix.pkl"
