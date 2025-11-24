@@ -27,16 +27,14 @@ from buildRag_openrouter_original import (
     build_review_embeddings,
     build_user_review_embeddings_for_single_user,
     build_all_user_review_embeddings,
-    build_item_index_for_category,
-    build_user_index_for
+    build_item_index_for_category
 )
 
 __all__ = [
     'build_review_embeddings',
     'build_user_review_embeddings_for_single_user',
     'build_all_user_review_embeddings',
-    'build_item_index_for_category',
-    'build_user_index_for'
+    'build_item_index_for_category'
 ]
 
 # TODO Phase 2: Migrate these functions into this file

@@ -47,8 +47,7 @@ from .validator import check_category_complete
 
 # Document building
 from .document_builder import (
-    normalize_item_docs_from_itemReview,
-    normalize_user_profile_for_user
+    normalize_item_docs_from_itemReview
 )
 
 # Index building
@@ -56,8 +55,7 @@ from .index_builder import (
     build_review_embeddings,
     build_user_review_embeddings_for_single_user,
     build_all_user_review_embeddings,
-    build_item_index_for_category,
-    build_user_index_for
+    build_item_index_for_category
 )
 
 __version__ = '1.0.0'
@@ -88,11 +86,9 @@ __all__ = [
     'check_category_complete',
     # Document builder
     'normalize_item_docs_from_itemReview',
-    'normalize_user_profile_for_user',
     # Index builder
     'build_review_embeddings',
     'build_user_review_embeddings_for_single_user',
     'build_all_user_review_embeddings',
-    'build_item_index_for_category',
-    'build_user_index_for'
+    'build_item_index_for_category'
 ]
