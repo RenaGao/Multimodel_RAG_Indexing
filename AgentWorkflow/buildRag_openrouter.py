@@ -931,7 +931,7 @@ def build_user_review_embeddings_for_single_user(
         return False
 
     # Generate embeddings
-    embeddings = embedder.encode(review_texts, batch_size=500)
+    embeddings = embedder.encode(review_texts, batch_size=1000)
 
     # Create metadata
     from datetime import datetime
@@ -1145,7 +1145,7 @@ def build_item_index_for_category(category: str, questions_file: Path = None):
         ]
 
         embedder_instance = Embedder()
-        emb = embedder_instance.encode(texts, batch_size=500)
+        emb = embedder_instance.encode(texts, batch_size=1000)
 
         meta_path = item_dir / "meta.pkl"
         matrix_path = item_dir / "matrix.pkl"
@@ -1313,7 +1313,7 @@ def build_user_index_for(user_name: str, category: str):
     docs = normalize_user_profile_for_user(all_users, only_user_id=user_name)
 
     texts = [d["title"] + " " + d["text"] for d in docs]
-    emb = Embedder().encode(texts, batch_size=500)
+    emb = Embedder().encode(texts, batch_size=1000)
 
     meta_path = user_dir / "meta.pkl"
     matrix_path = user_dir / "matrix.pkl"
