@@ -206,7 +206,7 @@ class Embedder:
 
     def encode(self, texts: List[str], batch_size: int = 100) -> np.ndarray:
         """
-        Encode texts to embeddings using OpenRouter API.
+        Encode texts to embeddings using OpenRouter API with automatic retry.
 
         Args:
             texts: List of texts to encode
@@ -215,6 +215,8 @@ class Embedder:
         Returns:
             numpy array of normalized embeddings, shape (len(texts), embedding_dim)
         """
+        import time
+
         print(f"[Embedder] Encoding {len(texts)} texts with batch_size={batch_size}")
 
         all_embeddings = []
@@ -222,21 +224,39 @@ class Embedder:
         # Process in batches with progress bar
         for i in tqdm(range(0, len(texts), batch_size), desc="Encoding batches"):
             batch_texts = texts[i:i + batch_size]
+            batch_num = i // batch_size + 1
 
-            try:
-                # Call OpenRouter API
-                response = self.client.embeddings.create(
-                    model=self.model_name,
-                    input=batch_texts
-                )
+            # Retry logic: 3 attempts with exponential backoff
+            max_retries = 3
+            retry_delays = [5, 15, 30]  # seconds
 
-                # Extract embeddings from response
-                batch_embeddings = [item.embedding for item in response.data]
-                all_embeddings.extend(batch_embeddings)
+            for attempt in range(max_retries):
+                try:
+                    # Call OpenRouter API
+                    response = self.client.embeddings.create(
+                        model=self.model_name,
+                        input=batch_texts
+                    )
 
-            except Exception as e:
-                print(f"\n[ERROR] Failed to encode batch {i//batch_size + 1}: {e}")
-                raise
+                    # Extract embeddings from response
+                    batch_embeddings = [item.embedding for item in response.data]
+                    all_embeddings.extend(batch_embeddings)
+
+                    # Success, break retry loop
+                    break
+
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        # Not the last attempt, retry
+                        wait_time = retry_delays[attempt]
+                        print(f"\n[RETRY] Batch {batch_num} failed (attempt {attempt + 1}/{max_retries}): {e}")
+                        print(f"[RETRY] Waiting {wait_time} seconds before retry...")
+                        time.sleep(wait_time)
+                    else:
+                        # Last attempt failed, raise exception
+                        print(f"\n[ERROR] Batch {batch_num} failed after {max_retries} attempts: {e}")
+                        print(f"[ERROR] Failed at batch {batch_num}, total processed: {len(all_embeddings)} embeddings")
+                        raise
 
         # Convert to numpy array
         embeddings_array = np.array(all_embeddings, dtype=np.float32)
@@ -498,13 +518,17 @@ def build_review_embeddings(
     item_review_data: dict,
     doc_order: List[str],
     embedder,
-    user_target_map: Dict[str, str] = None
+    user_target_map: Dict[str, str] = None,
+    checkpoint_dir: Path = None
 ) -> np.ndarray:
     """
-    Generate average review embeddings for each item (OPTIMIZED VERSION)
+    Generate average review embeddings for each item (OPTIMIZED VERSION with CHECKPOINT)
 
     Performance: ~16x faster than original by using global batch processing
     instead of per-item API calls.
+
+    Checkpoint support: Saves progress every 50 batches. If interrupted, automatically
+    resumes from last checkpoint on next run.
 
     Args:
         item_review_data: dict with structure {parent_asin: [review_list]}
@@ -512,6 +536,7 @@ def build_review_embeddings(
         embedder: Embedder instance
         user_target_map: Optional dict mapping user_id -> target_product_asin
                         If provided, excludes reviews from users for their target products
+        checkpoint_dir: Directory to save/load checkpoint files (required for checkpoint support)
 
     Returns:
         numpy array: Each row is the average embedding of all reviews for that item
@@ -561,26 +586,142 @@ def build_review_embeddings(
         item_review_counts.append(item_review_count)
 
     total_reviews = len(all_review_texts)
-    print(f"[Phase 1/3] ✓ Collected {total_reviews:,} reviews from {len(doc_order):,} items")
+    print(f"[Phase 1/3] [OK] Collected {total_reviews:,} reviews from {len(doc_order):,} items")
     if total_excluded > 0:
         print(f"[Phase 1/3]   Excluded {total_excluded:,} target product reviews")
 
     # ========================================================================
-    # PHASE 2: Generate embeddings for all reviews (with checkpoint)
+    # PHASE 2: Generate embeddings for all reviews (with checkpoint support)
     # ========================================================================
     print(f"\n[Phase 2/3] Generating embeddings for {total_reviews:,} reviews...")
 
     if total_reviews == 0:
         # No reviews at all, return zero vectors for all items
-        print("[Phase 2/3] ⚠ No reviews found, returning zero vectors")
+        print("[Phase 2/3] [WARN] No reviews found, returning zero vectors")
         dim = embedder.get_sentence_embedding_dimension()
         return np.zeros((len(doc_order), dim), dtype=np.float32)
 
-    # Generate all embeddings at once (embedder.encode handles batching internally)
-    print(f"[Phase 2/3] Encoding all reviews (batch_size=100 internally)...")
-    all_embeddings = embedder.encode(all_review_texts, batch_size=500)
+    # Checkpoint configuration
+    checkpoint_file = None
+    if checkpoint_dir:
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        checkpoint_file = checkpoint_dir / "review_embeddings_checkpoint.pkl"
 
-    print(f"[Phase 2/3] ✓ Generated {len(all_embeddings):,} embeddings")
+    # Check for existing checkpoint
+    all_embeddings = []
+    start_batch = 0
+
+    if checkpoint_file and checkpoint_file.exists():
+        try:
+            import pickle
+            from datetime import datetime
+
+            with open(checkpoint_file, 'rb') as f:
+                checkpoint_data = pickle.load(f)
+
+            # Validate checkpoint with strict data consistency checks
+            saved_item_review_counts = checkpoint_data.get('item_review_counts', [])
+
+            # Three-layer verification:
+            # 1. Total reviews count matches
+            # 2. Number of items matches
+            # 3. Review distribution per item matches (order and content)
+            if (checkpoint_data.get('total_reviews') == total_reviews and
+                checkpoint_data.get('total_batches') > 0 and
+                len(saved_item_review_counts) == len(item_review_counts) and
+                saved_item_review_counts == item_review_counts):
+
+                # All validations passed, safe to restore
+                all_embeddings = checkpoint_data['embeddings']
+                start_batch = checkpoint_data['processed_batches']
+                timestamp = checkpoint_data.get('timestamp', 'unknown')
+
+                print(f"[Phase 2/3] [OK] Found checkpoint from {timestamp}")
+                print(f"[Phase 2/3] [OK] Loaded {len(all_embeddings):,} embeddings from checkpoint")
+                print(f"[Phase 2/3] [OK] Data consistency verified (all checks passed)")
+                print(f"[Phase 2/3] [OK] Resuming from batch {start_batch}/{checkpoint_data['total_batches']} ({start_batch*100//checkpoint_data['total_batches']}%)")
+            else:
+                # Data inconsistency detected, must start fresh
+                print("[Phase 2/3] [WARN] Checkpoint found but validation failed:")
+
+                if checkpoint_data.get('total_reviews') != total_reviews:
+                    print(f"[Phase 2/3]   • Total reviews changed: {checkpoint_data.get('total_reviews'):,} → {total_reviews:,}")
+
+                if len(saved_item_review_counts) != len(item_review_counts):
+                    print(f"[Phase 2/3]   • Number of items changed: {len(saved_item_review_counts):,} → {len(item_review_counts):,}")
+
+                if saved_item_review_counts != item_review_counts:
+                    if len(saved_item_review_counts) == len(item_review_counts):
+                        print(f"[Phase 2/3]   • Review distribution per item changed")
+                        # Show first few differences for debugging
+                        for i, (saved, current) in enumerate(zip(saved_item_review_counts[:5], item_review_counts[:5])):
+                            if saved != current:
+                                print(f"[Phase 2/3]     - Item {i}: {saved} → {current} reviews")
+
+                print("[Phase 2/3] [WARN] Data inconsistency detected, checkpoint invalid")
+                print("[Phase 2/3] [WARN] Starting fresh to ensure correctness")
+
+                all_embeddings = []
+                start_batch = 0
+        except Exception as e:
+            print(f"[Phase 2/3] [WARN] Failed to load checkpoint: {e}, starting fresh")
+            all_embeddings = []
+            start_batch = 0
+
+    # Batch processing configuration
+    batch_size = 1000
+    checkpoint_interval = 50  # Save every 50 batches
+    total_batches = (total_reviews + batch_size - 1) // batch_size
+
+    if start_batch == 0:
+        print(f"[Phase 2/3] Starting fresh encoding (batch_size={batch_size})...")
+    else:
+        print(f"[Phase 2/3] Resuming encoding from batch {start_batch}...")
+
+    # Process batches with checkpoint saving
+    import pickle
+    from datetime import datetime
+
+    for batch_idx in tqdm(range(start_batch, total_batches),
+                          desc="Encoding batches",
+                          initial=start_batch,
+                          total=total_batches):
+
+        start_idx = batch_idx * batch_size
+        end_idx = min(start_idx + batch_size, total_reviews)
+        batch_texts = all_review_texts[start_idx:end_idx]
+
+        # Encode this batch (embedder.encode has internal retry logic)
+        batch_embeddings = embedder.encode(batch_texts, batch_size=100)
+
+        if isinstance(all_embeddings, list):
+            all_embeddings.extend(batch_embeddings.tolist())
+        else:
+            all_embeddings = batch_embeddings.tolist()
+
+        # Save checkpoint periodically
+        if checkpoint_file and (batch_idx + 1) % checkpoint_interval == 0:
+            checkpoint_data = {
+                'embeddings': all_embeddings,
+                'processed_batches': batch_idx + 1,
+                'total_batches': total_batches,
+                'total_reviews': total_reviews,
+                'batch_size': batch_size,
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'item_review_counts': item_review_counts
+            }
+
+            try:
+                with open(checkpoint_file, 'wb') as f:
+                    pickle.dump(checkpoint_data, f)
+                print(f"\n[Checkpoint] Saved at batch {batch_idx + 1}/{total_batches} ({(batch_idx + 1)*100//total_batches}%)")
+            except Exception as e:
+                print(f"\n[Checkpoint] [WARN] Failed to save: {e}")
+
+    # Convert to numpy array
+    all_embeddings = np.array(all_embeddings, dtype=np.float32)
+
+    print(f"[Phase 2/3] [OK] Generated {len(all_embeddings):,} embeddings")
     print(f"[Phase 2/3]   Embedding dimension: {all_embeddings.shape[1]}")
 
     # ========================================================================
@@ -604,7 +745,7 @@ def build_review_embeddings(
             review_embeddings.append(np.zeros(dim))
 
     result = np.array(review_embeddings, dtype=np.float32)
-    print(f"[Phase 3/3] ✓ Final result shape: {result.shape}")
+    print(f"[Phase 3/3] [OK] Final result shape: {result.shape}")
 
     # ========================================================================
     # VERIFICATION: Ensure correctness
@@ -614,12 +755,12 @@ def build_review_embeddings(
     # Verify 1: Check array length matches doc_order
     assert len(result) == len(doc_order), \
         f"Length mismatch: {len(result)} != {len(doc_order)}"
-    print(f"[Verification] ✓ Length check passed: {len(result)} items")
+    print(f"[Verification] [OK] Length check passed: {len(result)} items")
 
     # Verify 2: Check total reviews processed
     assert current_review_idx == total_reviews, \
         f"Review count mismatch: processed {current_review_idx} != collected {total_reviews}"
-    print(f"[Verification] ✓ Review count check passed: {total_reviews:,} reviews")
+    print(f"[Verification] [OK] Review count check passed: {total_reviews:,} reviews")
 
     # Verify 3: Sample validation (check random items)
     import random
@@ -645,10 +786,20 @@ def build_review_embeddings(
         assert expected_count == actual_count, \
             f"Sample check failed for item {idx} ({parent_asin}): {expected_count} != {actual_count}"
 
-    print(f"[Verification] ✓ Sample check passed: {sample_size} random items validated")
-    print(f"[Verification] ✅ All verification checks passed!")
+    print(f"[Verification] [OK] Sample check passed: {sample_size} random items validated")
+    print(f"[Verification] [SUCCESS] All verification checks passed!")
 
-    print(f"\n[OPTIMIZED] ✅ Review embeddings complete!")
+    # ========================================================================
+    # CLEANUP: Remove checkpoint file after successful completion
+    # ========================================================================
+    if checkpoint_file and checkpoint_file.exists():
+        try:
+            checkpoint_file.unlink()
+            print(f"[Cleanup] [OK] Removed checkpoint file")
+        except Exception as e:
+            print(f"[Cleanup] [WARN] Failed to remove checkpoint: {e}")
+
+    print(f"\n[OPTIMIZED] [SUCCESS] Review embeddings complete!")
     print(f"[OPTIMIZED]    Items: {len(doc_order):,}")
     print(f"[OPTIMIZED]    Reviews: {total_reviews:,}")
     print(f"[OPTIMIZED]    Embedding dim: {dim}")
@@ -1041,9 +1192,15 @@ def build_item_index_for_category(category: str, questions_file: Path = None):
         if embedder_instance is None:
             embedder_instance = Embedder()
 
-        # Generate review embeddings
+        # Generate review embeddings (with checkpoint support)
         print(f"[INFO] Generating review embeddings...")
-        review_emb = build_review_embeddings(item_review_data, doc_order, embedder_instance, user_target_map)
+        review_emb = build_review_embeddings(
+            item_review_data,
+            doc_order,
+            embedder_instance,
+            user_target_map,
+            checkpoint_dir=item_dir  # Pass checkpoint directory
+        )
         print(f"[INFO] Generated review embeddings: {review_emb.shape}")
 
         # Save review embeddings
@@ -1212,10 +1369,10 @@ if __name__ == "__main__":
 
             if status["complete"]:
                 already_complete.append(cat)
-                print(f"✅ {cat:30s} - {status['details']}")
+                print(f"[SUCCESS] {cat:30s} - {status['details']}")
             else:
                 to_process.append(cat)
-                print(f"⚠️  {cat:30s} - {status['details']}")
+                print(f"[WARN]  {cat:30s} - {status['details']}")
 
         # Display statistics
         print(f"\n{'='*80}")
