@@ -325,7 +325,7 @@ class Embedder:
         memmap_file: Path,
         total_texts: int
     ) -> np.memmap:
-        """Migrate legacy checkpoint embeddings to memmap file"""
+        """Migrate legacy checkpoint embeddings to memmap file using chunk-based conversion"""
         legacy_embeddings = checkpoint_data['embeddings']
         num_existing = len(legacy_embeddings)
 
@@ -339,9 +339,33 @@ class Embedder:
             shape=(total_texts, self.embedding_dim)
         )
 
-        # Copy existing embeddings to memmap
-        legacy_array = np.array(legacy_embeddings, dtype=np.float32)
-        embeddings_memmap[:num_existing] = legacy_array
+        # CHUNK-BASED MIGRATION (avoid memory doubling from np.array() copy)
+        chunk_size = 50000  # ~770 MB per chunk (50000 * 4096 * 4 bytes)
+        num_chunks = (num_existing + chunk_size - 1) // chunk_size
+
+        print(f"[MIGRATION] Converting in {num_chunks} chunks to avoid memory overflow...")
+
+        for chunk_idx in range(num_chunks):
+            start_idx = chunk_idx * chunk_size
+            end_idx = min(start_idx + chunk_size, num_existing)
+
+            # Convert only this chunk to numpy (small memory footprint)
+            chunk_data = legacy_embeddings[start_idx:end_idx]
+            chunk_array = np.array(chunk_data, dtype=np.float32)
+
+            # Write to memmap at correct position
+            embeddings_memmap[start_idx:end_idx] = chunk_array
+
+            # Free chunk memory immediately
+            del chunk_array
+            gc.collect()
+
+            # Progress update every 5 chunks or at the end
+            if (chunk_idx + 1) % 5 == 0 or chunk_idx == num_chunks - 1:
+                progress = (chunk_idx + 1) * 100 // num_chunks
+                print(f"[MIGRATION] Progress: {chunk_idx + 1}/{num_chunks} chunks ({progress}%)")
+
+        # Flush to disk
         embeddings_memmap.flush()
 
         file_size_gb = memmap_file.stat().st_size / (1024**3)
@@ -349,9 +373,10 @@ class Embedder:
         print(f"[MIGRATION] Memmap file: {memmap_file}")
         print(f"[MIGRATION] File size: {file_size_gb:.2f} GB")
 
-        # Free memory
+        # Free legacy embeddings from memory
         del legacy_embeddings
-        del legacy_array
+        if 'embeddings' in checkpoint_data:
+            del checkpoint_data['embeddings']  # Remove from dict to free memory
         gc.collect()
 
         return embeddings_memmap
