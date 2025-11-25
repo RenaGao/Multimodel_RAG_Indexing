@@ -20,8 +20,12 @@ from datetime import datetime
 import numpy as np
 from openai import OpenAI
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .config import BATCH_SIZE, CHECKPOINT_INTERVAL
+
+# Concurrent API workers for parallel processing
+CONCURRENT_WORKERS = 5
 
 
 class Embedder:
@@ -138,44 +142,69 @@ class Embedder:
             else:
                 embeddings_storage = []
 
-        # Process in batches with progress bar
-        for batch_idx in tqdm(range(start_batch, total_batches),
-                              desc="Encoding batches",
-                              initial=start_batch,
-                              total=total_batches):
+        # Process in checkpoint groups with parallel API calls
+        pbar = tqdm(total=total_batches, initial=start_batch, desc="Encoding batches")
 
-            start_idx = batch_idx * batch_size
-            end_idx = min(start_idx + batch_size, total_texts)
-            batch_texts = texts[start_idx:end_idx]
+        for checkpoint_start in range(start_batch, total_batches, CHECKPOINT_INTERVAL):
+            checkpoint_end = min(checkpoint_start + CHECKPOINT_INTERVAL, total_batches)
 
-            # Call API with retry
-            batch_embeddings = self._call_api_with_retry(batch_texts, batch_idx)
+            # Prepare batch info for this checkpoint group
+            batch_jobs = []
+            for batch_idx in range(checkpoint_start, checkpoint_end):
+                start_idx = batch_idx * batch_size
+                end_idx = min(start_idx + batch_size, total_texts)
+                batch_texts = texts[start_idx:end_idx]
+                batch_jobs.append((batch_idx, start_idx, end_idx, batch_texts))
 
-            # Store embeddings
-            if use_memmap:
-                # Write directly to memmap (disk, not RAM)
-                embeddings_storage[start_idx:end_idx] = batch_embeddings
-                embeddings_storage.flush()  # Ensure written to disk
-            else:
-                # Traditional in-memory list
-                if isinstance(embeddings_storage, list):
-                    embeddings_storage.extend(batch_embeddings)
-                else:
-                    embeddings_storage = batch_embeddings
+            # Process batches concurrently
+            with ThreadPoolExecutor(max_workers=CONCURRENT_WORKERS) as executor:
+                futures = {}
+                for batch_idx, start_idx, end_idx, batch_texts in batch_jobs:
+                    future = executor.submit(self._call_api_with_retry, batch_texts, batch_idx)
+                    futures[future] = (batch_idx, start_idx, end_idx)
 
-            # Save checkpoint periodically
-            if checkpoint_file and (batch_idx + 1) % CHECKPOINT_INTERVAL == 0:
+                # Collect results and write to storage
+                for future in as_completed(futures):
+                    batch_idx, start_idx, end_idx = futures[future]
+                    try:
+                        batch_embeddings = future.result()
+
+                        # Store embeddings
+                        if use_memmap:
+                            # Write directly to memmap (disk, not RAM)
+                            embeddings_storage[start_idx:end_idx] = batch_embeddings
+                            embeddings_storage.flush()  # Ensure written to disk
+                        else:
+                            # For non-memmap, we need to handle differently
+                            if isinstance(embeddings_storage, list):
+                                # Store with position info for later sorting
+                                for i, emb in enumerate(batch_embeddings):
+                                    # Ensure list is large enough
+                                    while len(embeddings_storage) <= start_idx + i:
+                                        embeddings_storage.append(None)
+                                    embeddings_storage[start_idx + i] = emb
+
+                        pbar.update(1)
+
+                    except Exception as e:
+                        print(f"\n[ERROR] Batch {batch_idx} failed: {e}")
+                        raise
+
+            # Save checkpoint after each group completes
+            if checkpoint_file:
                 self._save_checkpoint(
                     checkpoint_file,
                     memmap_file,
                     embeddings_storage,
-                    batch_idx + 1,
+                    checkpoint_end,
                     total_batches,
                     total_texts,
                     batch_size,
                     validation_metadata,
                     use_memmap
                 )
+
+        pbar.close()
 
         # Convert to final format
         if use_memmap and return_memmap:
@@ -480,16 +509,18 @@ class Embedder:
         return True
 
     def _call_api_with_retry(self, batch_texts: List[str], batch_idx: int) -> list:
-        """Call OpenRouter API with automatic retry logic"""
+        """Call OpenRouter API with automatic retry logic and timeout"""
         max_retries = 3
         retry_delays = [5, 15, 30]  # seconds
+        api_timeout = 120.0  # 2 minutes timeout
 
         for attempt in range(max_retries):
             try:
-                # Call OpenRouter API
+                # Call OpenRouter API with timeout
                 response = self.client.embeddings.create(
                     model=self.model_name,
-                    input=batch_texts
+                    input=batch_texts,
+                    timeout=api_timeout
                 )
 
                 # Extract embeddings from response
