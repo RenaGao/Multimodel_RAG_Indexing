@@ -120,7 +120,7 @@ def build_review_embeddings(
     if checkpoint_dir:
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    # Call encode() with checkpoint support (all batching and checkpoint logic is now inside encode())
+    # Call encode() with checkpoint support and memmap for memory efficiency
     all_embeddings = embedder.encode(
         all_review_texts,
         batch_size=BATCH_SIZE,
@@ -132,7 +132,9 @@ def build_review_embeddings(
             'item_review_counts': item_review_counts,
             'total_reviews': total_reviews,
             'num_items': len(doc_order)
-        }
+        },
+        use_memmap=True,        # Enable memory-mapped file for low memory usage
+        return_memmap=True      # Return memmap reference for streaming processing
     )
 
     print(f"[Phase 2/3] [OK] Generated {len(all_embeddings):,} embeddings")
@@ -149,9 +151,16 @@ def build_review_embeddings(
 
     for item_idx, review_count in enumerate(tqdm(item_review_counts, desc="Averaging embeddings")):
         if review_count > 0:
-            # Extract embeddings for this item
+            # Extract embeddings for this item (memmap slicing is lazy - no copy)
             item_embeddings = all_embeddings[current_review_idx:current_review_idx + review_count]
+            # np.mean reads from disk in chunks, computes average incrementally
             avg_emb = np.mean(item_embeddings, axis=0)
+
+            # Normalize the averaged embedding
+            norm = np.linalg.norm(avg_emb)
+            if norm > 1e-8:
+                avg_emb = avg_emb / norm
+
             review_embeddings.append(avg_emb)
             current_review_idx += review_count
         else:
@@ -207,6 +216,14 @@ def build_review_embeddings(
     print(f"[OPTIMIZED]    Items: {len(doc_order):,}")
     print(f"[OPTIMIZED]    Reviews: {total_reviews:,}")
     print(f"[OPTIMIZED]    Embedding dim: {dim}")
+
+    # Clean up memmap file
+    if isinstance(all_embeddings, np.memmap):
+        memmap_filename = all_embeddings.filename
+        del all_embeddings  # Close memmap
+        if memmap_filename and Path(memmap_filename).exists():
+            Path(memmap_filename).unlink()
+            print(f"[Memmap] Temporary file deleted: {Path(memmap_filename).name}")
 
     return result
 
