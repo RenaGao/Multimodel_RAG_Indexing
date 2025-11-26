@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from .config import BATCH_SIZE, CHECKPOINT_INTERVAL
 
 # Concurrent API workers for parallel processing
-CONCURRENT_WORKERS = 10
+CONCURRENT_WORKERS = 20
 
 
 class Embedder:
@@ -100,6 +100,15 @@ class Embedder:
         total_batches = (total_texts + batch_size - 1) // batch_size
 
         print(f"[Embedder] Encoding {total_texts} texts in {total_batches} batches (batch_size={batch_size})")
+
+        # Text length statistics
+        if texts:
+            lengths = [len(t) for t in texts]
+            print(f"[Embedder] Text length stats: min={min(lengths)}, max={max(lengths)}, avg={sum(lengths)//len(lengths)}")
+            long_texts = sum(1 for l in lengths if l > 25000)
+            if long_texts > 0:
+                print(f"[Embedder] WARNING: {long_texts} texts exceed 25000 chars, will be truncated")
+
         if use_memmap:
             print(f"[Embedder] Using memory-mapped file for efficient memory usage")
 
@@ -514,12 +523,19 @@ class Embedder:
         retry_delays = [5, 15, 30, 60, 120]  # seconds, longer waits for rate limit recovery
         api_timeout = 120.0  # 2 minutes timeout
 
+        # Truncate long texts to avoid API errors (25000 chars ≈ 6000 tokens, well under 8192 limit)
+        MAX_TEXT_CHARS = 25000
+        truncated_texts = [
+            text[:MAX_TEXT_CHARS] if len(text) > MAX_TEXT_CHARS else text
+            for text in batch_texts
+        ]
+
         for attempt in range(max_retries):
             try:
                 # Call OpenRouter API with timeout
                 response = self.client.embeddings.create(
                     model=self.model_name,
-                    input=batch_texts,
+                    input=truncated_texts,
                     timeout=api_timeout
                 )
 
