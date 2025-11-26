@@ -528,7 +528,19 @@ def build_item_index_for_category(category: str, questions_file: Path = None):
         ]
 
         embedder_instance = Embedder()
-        emb = embedder_instance.encode(texts, batch_size=BATCH_SIZE)
+        emb = embedder_instance.encode(
+            texts,
+            batch_size=BATCH_SIZE,
+            checkpoint_enabled=True,
+            checkpoint_dir=item_dir,
+            checkpoint_id="item_meta_embeddings",
+            validation_metadata={
+                'task_type': 'item_meta_embeddings',
+                'num_items': len(texts)
+            },
+            use_memmap=True,
+            return_memmap=False  # Need numpy array for pkl save
+        )
 
         meta_path = item_dir / "meta.pkl"
         matrix_path = item_dir / "matrix.pkl"

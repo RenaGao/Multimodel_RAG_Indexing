@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from .config import BATCH_SIZE, CHECKPOINT_INTERVAL
 
 # Concurrent API workers for parallel processing
-CONCURRENT_WORKERS = 20
+CONCURRENT_WORKERS = 10
 
 
 class Embedder:
@@ -510,8 +510,8 @@ class Embedder:
 
     def _call_api_with_retry(self, batch_texts: List[str], batch_idx: int) -> list:
         """Call OpenRouter API with automatic retry logic and timeout"""
-        max_retries = 3
-        retry_delays = [5, 15, 30]  # seconds
+        max_retries = 5
+        retry_delays = [5, 15, 30, 60, 120]  # seconds, longer waits for rate limit recovery
         api_timeout = 120.0  # 2 minutes timeout
 
         for attempt in range(max_retries):
