@@ -194,15 +194,15 @@ def build_review_embeddings(
         parent_asin = doc_order[idx]
         expected_count = item_review_counts[idx]
 
-        # Count actual reviews for this item
+        # Count actual reviews for this item (must match Phase 1 logic: title + text)
         actual_reviews = item_review_data.get(parent_asin, [])
         actual_count = sum(1 for r in actual_reviews
-                          if isinstance(r, dict) and r.get('text', '').strip())
+                          if isinstance(r, dict) and f"{r.get('title', '')} {r.get('text', '')}".strip())
 
-        # Account for excluded reviews
+        # Account for excluded reviews (must match Phase 1 logic)
         if user_target_map:
             excluded = sum(1 for r in actual_reviews
-                          if isinstance(r, dict) and r.get('text', '').strip()
+                          if isinstance(r, dict) and f"{r.get('title', '')} {r.get('text', '')}".strip()
                           and user_target_map.get(r.get('user_id')) == parent_asin)
             actual_count -= excluded
 
