@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from .config import BATCH_SIZE, CHECKPOINT_INTERVAL
 
 # Concurrent API workers for parallel processing
-CONCURRENT_WORKERS = 20
+CONCURRENT_WORKERS = 15
 
 
 class Embedder:
