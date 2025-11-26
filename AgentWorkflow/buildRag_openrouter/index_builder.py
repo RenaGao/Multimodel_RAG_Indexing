@@ -68,7 +68,9 @@ def build_review_embeddings(
 
     all_review_texts = []          # All review texts collected
     item_review_counts = []        # Number of reviews per item (in doc_order)
+    empty_text_indices = set()     # Global indices of reviews with empty text (to be zeroed)
     total_excluded = 0
+    global_review_idx = 0          # Track global index for empty text detection
 
     for item_idx, parent_asin in enumerate(tqdm(doc_order, desc="Collecting reviews")):
         reviews = item_review_data.get(parent_asin, [])
@@ -94,8 +96,12 @@ def build_review_embeddings(
             combined = f"{title} {text}".strip()
 
             if combined:
+                # Track empty text reviews (text is empty but title exists)
+                if not text.strip():
+                    empty_text_indices.add(global_review_idx)
                 all_review_texts.append(combined)
                 item_review_count += 1
+                global_review_idx += 1
 
         # Record how many reviews this item has (in doc_order)
         item_review_counts.append(item_review_count)
@@ -104,6 +110,8 @@ def build_review_embeddings(
     print(f"[Phase 1/3] [OK] Collected {total_reviews:,} reviews from {len(doc_order):,} items")
     if total_excluded > 0:
         print(f"[Phase 1/3]   Excluded {total_excluded:,} target product reviews")
+    if empty_text_indices:
+        print(f"[Phase 1/3]   Found {len(empty_text_indices):,} reviews with empty text (will use zero embedding)")
 
     # ========================================================================
     # PHASE 2: Generate embeddings for all reviews (with checkpoint support)
@@ -139,6 +147,16 @@ def build_review_embeddings(
 
     print(f"[Phase 2/3] [OK] Generated {len(all_embeddings):,} embeddings")
     print(f"[Phase 2/3]   Embedding dimension: {all_embeddings.shape[1]}")
+
+    # Replace empty text embeddings with zero vectors
+    if empty_text_indices:
+        print(f"[Phase 2/3] Replacing {len(empty_text_indices):,} empty text embeddings with zeros...")
+        zero_vector = np.zeros(all_embeddings.shape[1], dtype=np.float32)
+        for idx in empty_text_indices:
+            all_embeddings[idx] = zero_vector
+        if hasattr(all_embeddings, 'flush'):
+            all_embeddings.flush()
+        print(f"[Phase 2/3] [OK] Replaced {len(empty_text_indices):,} embeddings with zeros")
 
     # ========================================================================
     # PHASE 3: Group embeddings by item and compute averages
