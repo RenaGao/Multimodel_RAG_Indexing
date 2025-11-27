@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Tuple, Optional
 from datetime import datetime
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from AgentWorkflow.buildRag_old import build_user_index_for
+from buildRag_old import build_user_index_for
 import torch
 import os
 import threading
