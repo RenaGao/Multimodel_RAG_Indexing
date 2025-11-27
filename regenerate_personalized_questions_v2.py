@@ -42,7 +42,8 @@ def load_existing_questions(file_path):
 def build_v2_prompt(user_history, target_product):
     """
     Build the v2 prompt using decision-point approach.
-    Questions look generic on the surface but create scenarios where RAG adds value.
+    Questions look generic but create scenarios where RAG adds value.
+    The user is asking for recommendations (they have NOT seen the target product).
     """
 
     # -------------------------
@@ -58,7 +59,7 @@ def build_v2_prompt(user_history, target_product):
             history_text += f"   Review Title: \"{item['review_title']}\"\n"
 
     # -------------------------
-    # 2. Format target metadata
+    # 2. Target metadata
     # -------------------------
     target_meta = target_product["product_meta"]
     target_title = target_meta.get("title", "product")
@@ -88,25 +89,81 @@ def build_v2_prompt(user_history, target_product):
             metadata_text += f"  - {key}: {value}\n"
 
     # -------------------------
-    # 3. Prompt
+    # 3. 粗略推一个 product_type（让问句说 "a tank top / a hat"）
+    # -------------------------
+    title_words = target_title.lower().split()
+    product_keywords = {
+        "tank": "tank top",
+        "top": "top",
+        "dress": "dress",
+        "shirt": "shirt",
+        "hoodie": "hoodie",
+        "sweater": "sweater",
+        "pants": "pants",
+        "jeans": "jeans",
+        "shorts": "shorts",
+        "skirt": "skirt",
+        "jacket": "jacket",
+        "coat": "coat",
+        "shoes": "shoes",
+        "boots": "boots",
+        "sandals": "sandals",
+        "sneakers": "sneakers",
+        "bag": "bag",
+        "purse": "purse",
+        "wallet": "wallet",
+        "belt": "belt",
+        "hat": "hat",
+        "cap": "hat",
+        "scarf": "scarf",
+        "gloves": "gloves",
+        "socks": "socks",
+        "necklace": "necklace",
+        "earrings": "earrings",
+        "bracelet": "bracelet",
+        "ring": "ring",
+        "extenstion": "hair extensions",
+        "extensions": "hair extensions",
+        "weave": "hair extensions",
+        "wig": "wig",
+        "book": "book"
+    }
+
+    product_type = "product"
+    for w in title_words:
+        if w in product_keywords:
+            product_type = product_keywords[w]
+            break
+    # 特判 tank + top
+    if "tank" in title_words and "top" in title_words:
+        product_type = "tank top"
+
+    # -------------------------
+    # 4. Prompt
     # -------------------------
     prompt = f"""You are a question generator for a personalized shopping assistant.
+
+SCENARIO:
+- This is a RECOMMENDATION conversation.
+- The user has NOT seen any specific item yet.
+- They are generally shopping for a {product_type} (or similar items) and want the assistant to recommend options.
+- The target product metadata below represents one candidate item the assistant might recommend, but the user does NOT refer to it directly.
 
 INPUTS:
 - Target product metadata (all available attributes).
 - 3–5 of the user's past product reviews (with metadata of those items).
 
-TARGET PRODUCT METADATA:
+TARGET PRODUCT METADATA (for your understanding only, NOT mentioned by name in questions):
 {metadata_text}
 
 USER'S PAST REVIEWS:
 {history_text}
 
 GOAL:
-Generate shopping questions that:
+Generate user-side shopping questions that:
 - Look natural and generic on the surface.
+- Are phrased as the user asking for RECOMMENDATIONS for a {product_type} or similar items.
 - Do NOT explicitly state the user's preferences.
-- Are clearly about helping the assistant choose or evaluate this product (or similar ones) FOR THIS USER.
 - Create decision points where a generic assistant and a preference-aware assistant would give different answers.
 
 CATEGORY & ATTRIBUTE AWARENESS (IMPORTANT):
@@ -155,9 +212,9 @@ You MUST infer the user's preferences ONLY from the user reviews provided.
 - You may NOT reuse or copy preferences from any example in this instruction.
 If the reviews do NOT provide evidence for a preference, you MUST NOT include it.
 
-QUESTION STYLE EXAMPLE (DO NOT COPY TEXT, ONLY STYLE):
+GOOD QUESTION STYLE EXAMPLE (DO NOT COPY TEXT, ONLY STYLE):
 
-Here is an example of GOOD questions for a case where the product happens to be a tank top:
+Consider a case where the user is looking for a tank top. Good questions look like:
 
 - "I'm looking for a tank top. What would you recommend?"
 - "What style of tank top suits me best - fitted or relaxed?"
@@ -165,36 +222,42 @@ Here is an example of GOOD questions for a case where the product happens to be 
 - "Which color options align with my usual preferences?"
 - "What size should I consider based on my past purchases?"
 - "Is this tank top suitable for both workouts and casual outings?"
-- "How does the fit of this tank top compare to what I usually wear?"
+- "How does the fit of this kind of tank top compare to what I usually wear?"
 - "What care instructions should I consider for maintaining quality?"
 
 These questions are GOOD because:
-- They ask the assistant to recommend or judge options FOR THE USER.
-- They hint at decisions that depend on the user's past behavior ("my usual preferences", "what I usually wear", "based on my past purchases").
-- They do NOT ask the user to state preferences directly.
-- They refer to attributes that actually exist for that product (material, style, size, color, use case, care).
-
-For YOUR task, you must generate questions with a SIMILAR STYLE and FUNCTION,
-but using ONLY attributes that are present in THIS target product's metadata.
+- The user is asking for recommendations, not describing a specific known item.
+- The assistant has to decide FOR THE USER.
+- They hint at decisions that depend on the user's history ("my usual preferences", "what I usually wear", "based on my past purchases").
+- They do NOT include specific hidden preferences like "for warm weather", "for sensitive skin", "because I sweat a lot".
+- They refer to high-level attributes (style, material, color, size, use case, care) that are typical for that product type.
 
 QUESTION DESIGN RULE (VERY IMPORTANT):
 
 Write questions as if the USER is asking a shopping assistant for help
-choosing or evaluating THIS specific product or similar options.
+choosing or evaluating a {product_type} or similar items, BEFORE seeing any specific product page.
 
 Your questions MUST:
-- NOT ask the user about their preferences (no "do you prefer…", "how important is it to you…",
+- Refer to the product type generically, e.g.:
+  - "a {product_type}", "this kind of {product_type}", "these {product_type}s".
+- MUST NOT refer to "this product", "this {product_type}", "this item", or any specific item.
+- MUST NOT ask the user about their preferences (no "do you prefer…", "how important is it to you…",
   "would you prioritize…", "do you have a preference for…", etc.).
-- NOT include explicit preference statements like "I like…", "I prefer…", "I care a lot about…".
+- MUST NOT include concrete personal conditions that reveal hidden preferences, such as:
+  - "for warm weather", "for my sensitive skin", "because my feet are wide", etc.
+  These should be discovered by the assistant from reviews, not baked into the question.
+- MAY refer to high-level qualities like comfort, durability, style, size, use case, or care,
+  but in a neutral way (e.g., "Which material would be most comfortable for me?"
+  is OK; "Which material would keep me cool in very hot weather?" is NOT OK).
 - Sound like the user is asking the assistant to decide or suggest something FOR THEM, for example:
-  - "What would you recommend for me?"
-  - "Which option would suit me better?"
-  - "Do you think this would be suitable for me?"
-  - "What should I pay attention to in my case?"
+  - "I'm looking for a {product_type}. What would you recommend?"
+  - "What style of {product_type} would suit me best?"
+  - "Which material would work better for me?"
+  - "What should I pay attention to when choosing a {product_type} for myself?"
 - Each question MUST clearly refer to the user, using phrases like:
   - "for me", "for someone like me", "for my needs",
   - "based on my past purchases", "compared to what I usually use/wear",
-  - "my usual choices", "how I typically use this kind of product".
+  - "my usual choices", "how I typically use this kind of item".
 - Create decision points where:
   - WITHOUT user reviews, the assistant can give only generic answers.
   - WITH user reviews, the assistant can tailor the answer based on this user's history.
@@ -216,11 +279,8 @@ For EACH question you generate, simulate two scenarios:
 If a question would lead to almost the SAME answer in both cases,
 it is a BAD question and you must revise it.
 
-IMPORTANT:
-- You must NOT fix this by asking directly about preferences.
-  - Do NOT change the question into "How important is X to you?" or "Do you prefer A or B?".
-- Instead, change the question to ask the assistant to choose or evaluate something FOR THE USER:
-  - e.g., "Which option would suit me better?" instead of "Do you prefer A or B?".
+You must NOT fix this by asking directly about preferences.
+Instead, change the question to ask the assistant to choose or evaluate something FOR THE USER.
 
 STRICT PROHIBITIONS:
 
@@ -229,7 +289,9 @@ STRICT PROHIBITIONS:
 - Do NOT ask about attributes that are irrelevant or not mentioned in metadata.
 - Do NOT make up any new product attributes.
 - Do NOT mention the specific product name/title in questions.
+- Do NOT refer to "this product", "this item", "this {product_type}".
 - Do NOT state the user's preferences explicitly in questions.
+- Do NOT include specific personal conditions like "for warm weather", "for my sensitive skin", etc.
 
 ABSOLUTELY FORBIDDEN question patterns:
 - Any question starting with or containing:
@@ -244,8 +306,6 @@ ABSOLUTELY FORBIDDEN question patterns:
   - "What are the key benefits of ..."
   - "Can you tell me about ..."
   - "How does this product perform in general?"
-These are BAD because a generic assistant and a personalized assistant
-would answer them almost the same way.
 
 OUTPUT FORMAT (JSON):
 
@@ -260,7 +320,7 @@ Return ONLY a JSON object with:
 2. "generated_questions":
    - 5–8 natural questions,
    - each based ONLY on attributes present in THIS product's metadata,
-   - each phrased as the user asking the assistant to decide or judge something FOR THEM,
+   - each phrased as the user asking the assistant to recommend or judge {product_type}s FOR THEM,
    - each designed so that answers would differ depending on the user's preferences,
    - questions MUST NOT explicitly state any user preference.
 
