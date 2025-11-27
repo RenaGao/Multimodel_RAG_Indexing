@@ -372,7 +372,32 @@ def generate_v2_questions(user_id, user_history, target_product, model="gpt-4o-m
 
 
 # -------------------------------------
-# 4. Main workflow
+# 4. Helper functions for batch processing
+# -------------------------------------
+def get_completed_categories(questions_v2_dir="questions_v2"):
+    """Get list of already completed categories from questions_v2 folder."""
+    completed = set()
+    if os.path.exists(questions_v2_dir):
+        for f in os.listdir(questions_v2_dir):
+            if f.endswith(".json"):
+                # Extract category from filename, e.g., "Amazon_Fashion_questions_xxx.json" -> "Amazon_Fashion"
+                category = f.split("_questions_")[0]
+                completed.add(category)
+    return completed
+
+
+def get_all_input_files(questions_dir="questions"):
+    """Get all input files from questions folder."""
+    files = []
+    if os.path.exists(questions_dir):
+        for f in os.listdir(questions_dir):
+            if f.endswith(".json") and "_questions_" in f:
+                files.append(os.path.join(questions_dir, f))
+    return sorted(files)
+
+
+# -------------------------------------
+# 5. Main workflow
 # -------------------------------------
 def main(input_file="questions/Amazon_Fashion_questions_20251110_214618.json"):
     """
@@ -414,7 +439,6 @@ def main(input_file="questions/Amazon_Fashion_questions_20251110_214618.json"):
                 "user_id": user_id,
                 "user_history": user_history,
                 "target_product": target_product,
-                "generated_questions_v1": old_questions,     # Keep original for reference
                 "latent_preferences": latent_prefs,          # Inferred preferences (for debugging)
                 "generated_questions": v2_questions          # New v2 decision-point questions
             }
@@ -433,8 +457,8 @@ def main(input_file="questions/Amazon_Fashion_questions_20251110_214618.json"):
     category = filename.split("_questions_")[0]
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    os.makedirs("questions", exist_ok=True)
-    output_path = os.path.join("questions", f"{category}_questions_v2_{ts}.json")
+    os.makedirs("questions_v2", exist_ok=True)
+    output_path = os.path.join("questions_v2", f"{category}_questions_{ts}.json")
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(all_results, f, ensure_ascii=False, indent=2)
@@ -486,18 +510,52 @@ if __name__ == "__main__":
         default="questions/Amazon_Fashion_questions_20251110_214618.json",
         help="Path to existing questions JSON file"
     )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Process all categories in questions/ folder, skip already completed ones in questions_v2/"
+    )
 
     args = parser.parse_args()
-
-    if not os.path.exists(args.input):
-        print(f"Error: Input file not found: {args.input}")
-        exit(1)
 
     print(f"{'='*80}")
     print(f"Regenerating V2 Questions (Decision-Point Approach)")
     print(f"{'='*80}\n")
 
-    main(input_file=args.input)
+    if args.all:
+        # Batch processing mode
+        completed = get_completed_categories()
+        all_files = get_all_input_files()
+
+        print(f"Found {len(all_files)} categories in questions/")
+        print(f"Already completed: {len(completed)} categories in questions_v2/")
+        if completed:
+            print(f"  Completed: {', '.join(sorted(completed))}")
+        print()
+
+        to_process = []
+        for input_file in all_files:
+            category = os.path.basename(input_file).split("_questions_")[0]
+            if category in completed:
+                print(f"[SKIP] {category} - already completed")
+            else:
+                to_process.append((category, input_file))
+
+        print(f"\nWill process {len(to_process)} categories\n")
+
+        for i, (category, input_file) in enumerate(to_process, 1):
+            print(f"\n{'='*80}")
+            print(f"[{i}/{len(to_process)}] Processing: {category}")
+            print(f"{'='*80}")
+            main(input_file=input_file)
+
+    else:
+        # Single file processing mode
+        if not os.path.exists(args.input):
+            print(f"Error: Input file not found: {args.input}")
+            exit(1)
+
+        main(input_file=args.input)
 
     print(f"\n{'='*80}")
     print("V2 generation completed successfully!")

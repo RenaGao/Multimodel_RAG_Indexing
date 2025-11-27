@@ -152,16 +152,6 @@
       "review_text": "This is great for exercise. It is flattering and works well.<br />This shirt is very comfortable. It is very versatile and can be worn many places.  It fits well and feels very good. We have other products from this company and have been happy with them.<br /><br />It is easy to wash and wear. I wear shirts like these all the time because I would rather be comfortable. It has a nice look to them. It is flattering.<br /><br />It feels durable. I am pleased with the quality. It is reasonably priced. I would recommend this.",
       "review_title": "Good exercise shirt"
     },
-    "generated_questions_v1": [
-      "I'm looking for a comfortable tank top for everyday wear. What options do you have?",
-      "Do you have any tank tops that are made from breathable materials like merino wool?",
-      "I'm interested in styles that are versatile and can be worn in different settings. What do you recommend?",
-      "Are there options available in different colors or prints that are cute and stylish?",
-      "How do the sizes run for these tank tops? Should I order a size up or down?",
-      "What is the price range for these tank tops? Are there any sales or discounts available?",
-      "Can you tell me about the care instructions? Are they easy to wash and maintain?",
-      "Do you have any options that are anti-odor or moisture-wicking for warmer weather?"
-    ],
     "latent_preferences": [
       "prefers neutral colors (black, gray, white), avoids bright prints",
       "sensitive to itchy fabrics, prefers soft cotton or merino wool",
@@ -328,16 +318,6 @@
       "review_text": "And I need nice, floppy hats to protect my head and face. I could use a full body protection suit, actually. I am very light skinned and I burn easily. I can turn red in 30 minutes or less. And I use an SPF 50 every time I go in the sun. So, this will come in handy for me.",
       "review_title": "Going to the beach soon"
     },
-    "generated_questions_v1": [
-      "I'm interested in finding a stylish hat for summer. What styles or materials should I consider?",
-      "Do you have recommendations for hats that provide good sun protection?",
-      "I've had issues with fit in the past. Are there adjustable options available?",
-      "What are some popular colors that would match well with summer outfits?",
-      "How do I care for straw hats to ensure they last through the season?",
-      "Are there any brands known for their quality and comfort in summer hats?",
-      "What's the typical price range for a nice, durable summer hat?",
-      "Can you recommend any hats that have decorative features, like bows or trim?"
-    ],
     "latent_preferences": [
       "prefers neutral colors (black, gray, white), avoids bright prints",
       "sensitive to itchy fabrics, prefers soft cotton or similar materials",
@@ -509,16 +489,6 @@
       "review_text": "The product page says these jeans are comprised on 1% elastane, but I can't detect any stretch at all.  The material is durable jean material but non-stretchy.  I love the color and the distress is well done.  I normally wear 32 x 32 but I could barely squeeze into these.  My other 32 x 32  jeans are much looser.  These are much more like skinny than slim and if you normally wear a 32 think about upsizing unless your are really skinny.  I washed them in the normal cycle and they seemed to come out of the dryer o.k. but I wouldn't be able to tell if they shrank or not since I can't hardly get them on anyway.",
       "review_title": "Not Stretchy and Run Really Tight"
     },
-    "generated_questions_v1": [
-      "I'm looking for some new jeans that are comfortable for everyday wear. What options do you have?",
-      "Do you have any recommendations for jeans that offer a good fit for someone who prefers a slim style?",
-      "How do the materials of these jeans hold up after washing? I want something that won't shrink or lose its shape.",
-      "Are there any brands that are known for high-quality denim that can withstand daily use?",
-      "I prefer jeans that have a bit of stretch for comfort. Are there any options available that include spandex or elastane?",
-      "Can you tell me about the color options available? I'm interested in something versatile like light blue or a classic dark wash.",
-      "What's the typical price range for good quality denim jeans? I want to make sure I'm getting value for my money.",
-      "Do you have options that offer a more relaxed fit for casual outings or activities?"
-    ],
     "latent_preferences": [
       "prefers neutral colors (black, gray, white), avoids bright prints",
       "sensitive to itchy fabrics, prefers soft cotton or merino wool",
@@ -692,16 +662,6 @@
       "review_text": "This dress is very pretty and features a bright floral print. The fabric is like a t-shirt and has stretch. There's a hidden zipper on the side. I found the fit to run small. For fit reference, I'm 5'6\", 153lbs and a 34G bra size. I'm wearing the X-Large. I think the large would have been ideal.<br /><br />Thanks so much for taking the time to read this review. I hope the information that I've provided makes your decision a little easier.",
       "review_title": "Bright Floral"
     },
-    "generated_questions_v1": [
-      "I'm in the market for a summer dress that I can wear to casual parties. What styles do you recommend?",
-      "I really love dresses with pockets. Are there options that include that feature?",
-      "What materials are typically used for lightweight summer dresses? I prefer something breathable.",
-      "I've had good experiences with dresses that have a unique hem or silhouette. Are there any dresses you have that stand out in that way?",
-      "How do the sizes run for these dresses? I want to make sure I get the right fit.",
-      "Can you tell me about the color options available? I'm looking for something vibrant and fun.",
-      "What kind of care do these dresses require? I'm looking for something that’s easy to maintain.",
-      "Do you have any dresses that are within a budget-friendly price range but still have a stylish look?"
-    ],
     "latent_preferences": [
       "prefers neutral colors (black, gray, white), avoids bright prints",
       "sensitive to itchy fabrics, prefers soft cotton or merino wool",
@@ -865,16 +825,6 @@
       "review_text": "(Reviewed by my wife):  These earrings have a very pretty design.  I love the twist shape.  It's nice a change from typical hoop earrings.  The earrings are lightweight and do not irritate my ear holes.<br /><br />I have not had the same problem with tarnishing as other reviewers.",
       "review_title": "Pretty design"
     },
-    "generated_questions_v1": [
-      "I'm in the market for some new jewelry, preferably something that has a unique design. What do you suggest?",
-      "I really love gemstones; do you have any recommendations for pieces that feature colorful stones?",
-      "What materials do you have available? I'm particularly interested in something that's sterling silver or gold finished.",
-      "Do you have any options that have a vintage or bohemian style to them?",
-      "Can you tell me about the size and length options for necklaces? I prefer something that sits comfortably on my neck.",
-      "How about the weight of the jewelry? I like pieces that feel sturdy but are still comfortable to wear.",
-      "What price range should I expect for quality pieces with gemstones?",
-      "Are there any special care instructions for maintaining the jewelry's appearance over time?"
-    ],
     "latent_preferences": [
       "prefers neutral colors (black, gray, white), avoids bright prints",
       "sensitive to itchy fabrics, prefers soft cotton or merino wool",
@@ -1050,16 +1000,6 @@
       "review_text": "This swimsuit has more or less a standard fit that flatters colon high enough leg cut outs to not shorten them, as well as hang up in the back to show a hint of cheek to look cute. The ties behind the neck allow you to adjust for a better fit, with a small drawback being a knot behind your neck that can be uncomfortable for longer use. Even so, I prefer the kind that ties like this one does, because otherwise, it’s unlikely you’re going to have the best fit for you. Beautiful neckline, nice details with ruching along the center front, this has some quality elements that make this better than your generic $10 type suit. Nice!",
       "review_title": "Nice quality suit"
     },
-    "generated_questions_v1": [
-      "I'm looking for a stylish and comfortable swimsuit for the summer. What options do you recommend?",
-      "Do you have any swimsuits that offer good coverage but still look fashionable?",
-      "I'm interested in something with a flattering fit. Are there any suits that are particularly good for different body types?",
-      "What materials do these swimsuits typically use? I prefer something soft and durable.",
-      "Can you suggest any brands that are known for their quality in swimwear?",
-      "Are there options available in larger sizes, and how do they fit?",
-      "What's the price range for these swimsuits? Are there any sales or discounts currently?",
-      "Do any of the swimsuits come with supportive features, like built-in bras or tummy control?"
-    ],
     "latent_preferences": [
       "prefers neutral colors (black, gray, white), avoids bright prints",
       "sensitive to itchy fabrics, prefers soft cotton or merino wool",
@@ -1224,16 +1164,6 @@
       "review_text": "These clog style slippers are warm and waterproof. They feel a lirtle large but still wearable. The textured sole provides traction. They are fine for the occasional outdoor excursion. Cute and comfortabke.",
       "review_title": "Warm & Waterproof"
     },
-    "generated_questions_v1": [
-      "I'm searching for some cozy indoor shoes for the winter season. What do you suggest?",
-      "Do you have options that are both warm and stylish, like the headbands and scarves I've purchased before?",
-      "I prefer soft materials. Are there slippers made with memory foam or soft fur?",
-      "How do the sizes run for these types of shoes? I found some boots ran a bit small for me.",
-      "Are there any waterproof options available? I want to be able to wear them outside too.",
-      "What are the price ranges for these cozy shoes? I'm looking for something affordable yet quality.",
-      "Can you recommend any brands that have good reviews on comfort and durability?",
-      "Do these shoes have any specific care instructions? I like low-maintenance items."
-    ],
     "latent_preferences": [
       "prefers neutral colors (black, gray, white), avoids bright prints",
       "sensitive to itchy fabrics, prefers soft materials",
@@ -1423,15 +1353,6 @@
       "review_text": "The Newffr casual blazer is perfect for the office. It is a beautiful color, caramel/camel. Traditional style - one button, with pockets. It is lightweight and comfortable. It fits true to size, no need to order up. The fabric is a blend of polyester and spandex. This blazer can be worn with every and anything – from pants to jeans. I’d recommend it.",
       "review_title": "Can be worn with any and everything!"
     },
-    "generated_questions_v1": [
-      "I'm in the market for a new blazer that I can wear to work and for casual outings. What styles do you recommend?",
-      "Do you have options that come in different colors, like brown or black?",
-      "I'm looking for something that has a more tailored fit but is still comfortable. Are there any recommendations?",
-      "What about blazers that have pockets? I find those really useful.",
-      "Can you suggest any brands known for quality in this price range?",
-      "I prefer blazers that are easy to care for. Do you have options that are machine washable?",
-      "How does the fit run? Should I size up or down?"
-    ],
     "latent_preferences": [
       "prefers neutral colors (black, gray, white), avoids bright prints",
       "sensitive to itchy fabrics, prefers soft cotton or breathable materials",
@@ -1612,16 +1533,6 @@
       "review_text": "These are prettier in person.  I was worried they would be a plastic and cheap feel, but they are not.  They are a little heavier, but not heavy like a heavy metal.  I really love the designs and I am wearing a pair tonight for New Years.  They are great!",
       "review_title": "Better Than Expected"
     },
-    "generated_questions_v1": [
-      "I'm looking for some stylish earrings that I can wear both casually and on special occasions. Any suggestions?",
-      "What materials are these earrings made from? I prefer something durable and of good quality.",
-      "Are there options that are lightweight? I don't like heavy earrings that pull on my ears.",
-      "Can you tell me about the different styles available? I'm interested in something unique, maybe with a bit of color.",
-      "Do you have any recommendations for earrings that won't irritate sensitive skin?",
-      "What is the price range for these earrings? I'm looking for something affordable but still high quality.",
-      "Are there any customer reviews I can check to see how others liked them?",
-      "How long does shipping usually take for jewelry purchases?"
-    ],
     "latent_preferences": [
       "prefers neutral colors (black, gray, white), avoids bright prints",
       "sensitive to itchy fabrics, prefers soft cotton or merino wool",
@@ -1794,16 +1705,6 @@
       "review_text": "I really like this top. I have used it outside, with slim leggings and I have worn it as a nightgown. I've worn it all over and all around the house. I have found it highly versatile and the fabric is so soft that I am always happy wearing this thing. It can be hard to find a really soft blouse and this is very soft. I love it. It has great stretch. It feels amazing. It looks great and washes up well. I am very pleased with this top. I wash it inside out, on delicate, and hang it to dry, and it is holding up very well.",
       "review_title": "Accurate Measurements, Long And Flowing, Works With Jeans Or Leggings"
     },
-    "generated_questions_v1": [
-      "I'm on the hunt for a casual top that I can wear with leggings. What styles do you recommend?",
-      "I prefer tops that have a loose fit and are comfortable. Are there options with that kind of silhouette?",
-      "Quality is really important to me. Can you suggest brands known for their durable fabrics?",
-      "I tend to like colors that are deep and rich. Are there any color options that fit this description?",
-      "What sizes do these tops typically come in? I want to make sure I find the right fit.",
-      "How do these tops wash? I’d like something that holds up well after multiple washes.",
-      "Can you let me know the price range for these types of casual tops?",
-      "Are there any customer reviews that highlight their experience with the sizing and fit?"
-    ],
     "latent_preferences": [
       "prefers neutral colors (black, gray, white), avoids bright prints",
       "sensitive to itchy fabrics, prefers soft cotton or merino wool",
