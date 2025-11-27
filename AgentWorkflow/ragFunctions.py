@@ -22,7 +22,7 @@ VSTORE_DIR = BASE_DIR / "vectorstore"
 CATALOG_DIR = VSTORE_DIR / "catalog"
 USERS_DIR   = VSTORE_DIR / "users"
 
-DATASET_CATEGORY = "Amazon_Fashion"
+DATASET_CATEGORY = "Digital_Music"  # Change as needed
 
 for p in [VSTORE_DIR, CATALOG_DIR, USERS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
@@ -74,80 +74,80 @@ def _iter_jsonl(path: Path):
             line = line.strip()
             yield json.loads(line)
 
-def _sample_user_reviews(user_name: str, num_reviews: int = 5) -> Optional[Dict]:
-    """
-    Sample random reviews for a user from Amazon_Fashion_top_100_user_data.json.
+# def _sample_user_reviews(user_name: str, num_reviews: int = 5) -> Optional[Dict]:
+#     """
+#     Sample random reviews for a user from Amazon_Fashion_top_100_user_data.json.
 
-    Args:
-        user_name: User identifier
-        num_reviews: Number of reviews to sample (default: 5)
+#     Args:
+#         user_name: User identifier
+#         num_reviews: Number of reviews to sample (default: 5)
 
-    Returns:
-        Dict with sampled review data or None if user not found
-    """
-    # Path to user data file (in project root)
-    user_data_path = Path("/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/Amazon_Fashion_top_100_user_data.json")
+#     Returns:
+#         Dict with sampled review data or None if user not found
+#     """
+#     # Path to user data file (in project root)
+#     user_data_path = Path("/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/Amazon_Fashion_top_100_user_data.json")
 
-    if not user_data_path.exists():
-        print(f"[SAMPLE_REVIEWS] User data file not found: {user_data_path}")
-        return None
+#     if not user_data_path.exists():
+#         print(f"[SAMPLE_REVIEWS] User data file not found: {user_data_path}")
+#         return None
 
-    try:
-        # Load user data
-        with user_data_path.open("r", encoding="utf-8") as f:
-            user_data = json.load(f)
+#     try:
+#         # Load user data
+#         with user_data_path.open("r", encoding="utf-8") as f:
+#             user_data = json.load(f)
 
-        if user_name not in user_data:
-            print(f"[SAMPLE_REVIEWS] User {user_name} not found in user data")
-            return None
+#         if user_name not in user_data:
+#             print(f"[SAMPLE_REVIEWS] User {user_name} not found in user data")
+#             return None
 
-        # Extract all reviews for this user
-        all_reviews = []
-        user_items = user_data[user_name]
+#         # Extract all reviews for this user
+#         all_reviews = []
+#         user_items = user_data[user_name]
 
-        for item_tuple in user_items:
-            if not isinstance(item_tuple, list) or len(item_tuple) < 2:
-                continue
+#         for item_tuple in user_items:
+#             if not isinstance(item_tuple, list) or len(item_tuple) < 2:
+#                 continue
 
-            product_meta = item_tuple[0]
-            review_list = item_tuple[1]
+#             product_meta = item_tuple[0]
+#             review_list = item_tuple[1]
 
-            # Add product context to each review
-            for review in review_list:
-                enriched_review = {
-                    "review_text": review.get("text", ""),
-                    "rating": review.get("rating"),
-                    "title": review.get("title", ""),
-                    "product_title": product_meta.get("title", ""),
-                    "product_brand": product_meta.get("store", ""),
-                    "product_price": product_meta.get("price"),
-                    "timestamp": review.get("timestamp", ""),
-                }
-                all_reviews.append(enriched_review)
+#             # Add product context to each review
+#             for review in review_list:
+#                 enriched_review = {
+#                     "review_text": review.get("text", ""),
+#                     "rating": review.get("rating"),
+#                     "title": review.get("title", ""),
+#                     "product_title": product_meta.get("title", ""),
+#                     "product_brand": product_meta.get("store", ""),
+#                     "product_price": product_meta.get("price"),
+#                     "timestamp": review.get("timestamp", ""),
+#                 }
+#                 all_reviews.append(enriched_review)
 
-        if not all_reviews:
-            print(f"[SAMPLE_REVIEWS] No reviews found for user {user_name}")
-            return None
+#         if not all_reviews:
+#             print(f"[SAMPLE_REVIEWS] No reviews found for user {user_name}")
+#             return None
 
-        # Sample reviews (with reproducible random seed)
-        import random
-        random.seed(42)
-        sampled = random.sample(all_reviews, min(num_reviews, len(all_reviews)))
+#         # Sample reviews (with reproducible random seed)
+#         import random
+#         random.seed(42)
+#         sampled = random.sample(all_reviews, min(num_reviews, len(all_reviews)))
 
-        result = {
-            "user_id": user_name,
-            "sampled_at": _now(),
-            "num_reviews": len(sampled),
-            "total_available_reviews": len(all_reviews),
-            "reviews": sampled
-        }
+#         result = {
+#             "user_id": user_name,
+#             "sampled_at": _now(),
+#             "num_reviews": len(sampled),
+#             "total_available_reviews": len(all_reviews),
+#             "reviews": sampled
+#         }
 
-        print(f"[SAMPLE_REVIEWS] Sampled {len(sampled)} reviews for user {user_name}")
-        return result
+#         print(f"[SAMPLE_REVIEWS] Sampled {len(sampled)} reviews for user {user_name}")
+#         return result
 
-    except Exception as e:
-        print(f"[SAMPLE_REVIEWS ERROR] {e}")
-        return None
+#     except Exception as e:
+#         print(f"[SAMPLE_REVIEWS ERROR] {e}")
+#         return None
 
 def _load_sampled_reviews(user_name: str) -> Optional[Dict]:
     """
@@ -329,13 +329,13 @@ def _select_relevant_reviews(user_query: str, user_name: str, top_k: int = 5) ->
     # Load user review embeddings
     review_embs, metadata = _load_user_review_embeddings(user_name)
 
-    if review_embs is None:
-        # Fallback to old fixed sampling method
-        print(f"[SELECT_REVIEWS] No review embeddings found, using fallback sampling")
-        sampled_data = _sample_user_reviews(user_name, num_reviews=top_k)
-        if sampled_data:
-            return sampled_data.get("reviews", [])
-        return []
+    # if review_embs is None:
+    #     # Fallback to old fixed sampling method
+    #     print(f"[SELECT_REVIEWS] No review embeddings found, using fallback sampling")
+    #     sampled_data = _sample_user_reviews(user_name, num_reviews=top_k)
+    #     if sampled_data:
+    #         return sampled_data.get("reviews", [])
+    #     return []
 
     # Load item index model to encode query
     iidx_dir = item_index_dir()
