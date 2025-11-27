@@ -42,16 +42,18 @@ def load_existing_questions(file_path):
 def build_v2_prompt(user_history, target_product):
     """
     Build the v2 prompt using decision-point approach.
-    Questions look generic but create scenarios where RAG adds value.
+    Questions look generic on the surface but create scenarios where RAG adds value.
 
     Args:
-        user_history: List of 5 products with ratings and reviews
+        user_history: List of 3–5 products with ratings and reviews
         target_product: The target product (for context, not directly mentioned)
 
     Returns:
         Formatted prompt string
     """
-    # Format user history with detailed review information
+    # -------------------------
+    # 1. Format user history
+    # -------------------------
     history_text = ""
     for i, item in enumerate(user_history, 1):
         meta = item["product_meta"]
@@ -61,28 +63,28 @@ def build_v2_prompt(user_history, target_product):
         if item.get('review_title'):
             history_text += f"   Review Title: \"{item['review_title']}\"\n"
 
-    # Extract target product information
+    # -------------------------
+    # 2. Format target metadata
+    # -------------------------
     target_meta = target_product["product_meta"]
     target_title = target_meta.get("title", "product")
     target_category = target_meta.get("main_category", "shopping")
 
-    # Extract product metadata
     target_details = target_meta.get("details", {})
     target_features = target_meta.get("features", [])
     target_description = target_meta.get("description", [])
 
-    # Format metadata text - include ALL available metadata
     metadata_text = f"Title: {target_title}\n"
     metadata_text += f"Category: {target_category}\n"
 
     if target_features:
         metadata_text += "Features:\n"
-        for feat in target_features[:10]:  # Limit to first 10 features
+        for feat in target_features[:10]:
             if feat:
                 metadata_text += f"  - {feat}\n"
 
     if target_description:
-        desc_text = " ".join([str(d) for d in target_description if d])[:500]  # Limit length
+        desc_text = " ".join([str(d) for d in target_description if d])[:500]
         if desc_text:
             metadata_text += f"Description: {desc_text}\n"
 
@@ -91,6 +93,9 @@ def build_v2_prompt(user_history, target_product):
         for key, value in target_details.items():
             metadata_text += f"  - {key}: {value}\n"
 
+    # -------------------------
+    # 3. Prompt
+    # -------------------------
     prompt = f"""You are a question generator for a personalized shopping assistant.
 
 INPUTS:
@@ -103,6 +108,13 @@ TARGET PRODUCT METADATA:
 USER'S PAST REVIEWS:
 {history_text}
 
+GOAL:
+Generate shopping questions that:
+- Look natural and generic on the surface.
+- Do NOT explicitly state the user's preferences.
+- Are clearly about helping the assistant choose or evaluate this product (or similar ones) FOR THIS USER.
+- Create decision points where a generic assistant and a preference-aware assistant would give different answers.
+
 CATEGORY & ATTRIBUTE AWARENESS (IMPORTANT):
 
 You MUST determine:
@@ -114,11 +126,11 @@ Do NOT use any assumptions about product types such as clothing, books, electron
 Do NOT rely on any templates, stereotypes, or memorized category schemas.
 Everything must be derived from THIS target product's metadata.
 
-ATTRIBUTE CONSTRAINTS:
+ATTRIBUTE CONSTRAINTS (EXTREMELY IMPORTANT):
 You are ONLY allowed to generate questions about attributes that are EXPLICITLY present,
 or strongly implied, in the target product metadata.
 
-Examples of allowed attribute sources:
+Allowed attribute sources include:
 - title
 - features
 - material
@@ -129,17 +141,23 @@ Examples of allowed attribute sources:
 - technical specs
 - pattern, print, color, if shown in metadata
 - category name fields
+- details fields
 
 You MUST NOT generate questions about attributes that do NOT exist in the metadata.
 For example:
-- Do NOT ask about size, fit, color, or patterns unless metadata mentions them.
-- Do NOT ask about battery life unless metadata mentions electronics features.
-- Do NOT ask about genre unless metadata mentions books or literary attributes.
+- Do NOT ask about size, fit, color, or patterns unless the metadata clearly suggests they exist.
+- Do NOT ask about battery life unless the metadata suggests an electronic device.
+- Do NOT ask about genre unless the metadata suggests a book or similar media.
+- Do NOT assume the item is clothing, electronics, books, shoes, or any specific category.
+You MUST infer the type ONLY from the metadata itself.
 
-PREFERENCE EXTRACTION RULE:
+PREFERENCE EXTRACTION RULE (CRITICAL):
 You MUST infer the user's preferences ONLY from the user reviews provided.
-Extract the themes that repeatedly appear across their reviews.
-You may NOT invent any preference that does not appear in the reviews.
+- Extract themes that repeatedly appear across their reviews (comfort, durability, style, quality, etc.).
+- Each latent preference MUST be supported by evidence in the reviews.
+- You may NOT invent any preference that does not appear in THIS user's reviews.
+- You may NOT reuse or copy preferences from any example in this instruction.
+If the reviews do NOT provide evidence for a preference, you MUST NOT include it.
 
 QUESTION DESIGN RULE (VERY IMPORTANT):
 
@@ -147,36 +165,42 @@ Write questions as if the USER is asking a shopping assistant for help
 choosing or evaluating THIS specific product or similar options.
 
 Your questions MUST:
-- NOT ask the user about their preferences (no “do you prefer…”, “how important is it to you…”, “would you prioritize…”, etc.).
-- NOT mention any preference words (“I like…”, “I prefer…”, “I care a lot about…”).
-- Sound like the user is asking the assistant to decide or suggest something FOR THEM:
-  - e.g., “Which option would you recommend for me?”, “What should I pay attention to?”, “Do you think this would be suitable for me?”.
-- Create decision points where a generic assistant and a preference-aware assistant would give DIFFERENT answers.
-  - The question itself stays neutral.
-  - The personalization happens only in the ANSWER, not in the wording of the question.
+- NOT ask the user about their preferences (no "do you prefer…", "how important is it to you…",
+  "would you prioritize…", "do you have a preference for…", etc.).
+- NOT include explicit preference words like "I like…", "I prefer…", "I care a lot about…".
+- Sound like the user is asking the assistant to decide or suggest something FOR THEM, for example:
+  - "What would you recommend for me?"
+  - "Which option would suit me better?"
+  - "Do you think this would be suitable for me?"
+  - "What should I pay attention to in my case?"
+- Each question MUST clearly refer to the user (e.g., using "for me", "for someone like me",
+  "would this work well for me", "how does this compare to what I usually use").
+- Create decision points where:
+  - WITHOUT user reviews, the assistant can give only generic answers.
+  - WITH user reviews, the assistant can tailor the answer based on this user's history.
 - Be natural for THIS product type.
 - Use ONLY attributes present in THIS product's metadata.
 
 RAG VALUE TEST (CRITICAL):
 
-For EACH question you generate, simulate:
+For EACH question you generate, simulate two scenarios:
 
-- WITHOUT RAG (no user reviews):
-  - The assistant can only see the product metadata and the text of the question.
-  - It can give only generic, one-size-fits-all answers.
+1) WITHOUT RAG (no user reviews):
+   - The assistant sees only the product metadata and the text of the question.
+   - It can give only generic, one-size-fits-all advice.
 
-- WITH RAG (has user reviews):
-  - The assistant sees the same metadata and question,
-  - PLUS the user's past reviews, and can use them to tailor the answer.
+2) WITH RAG (with user reviews):
+   - The assistant sees the same metadata and question,
+   - PLUS the user's past reviews, and can use them to tailor the answer.
 
 If a question would lead to almost the SAME answer in both cases,
 it is a BAD question and you must revise it.
 
 IMPORTANT:
 - You must NOT fix this by asking directly about preferences.
-  - Do NOT change the question into “How important is X to you?” or “Do you prefer A or B?”.
+  - Do NOT change the question into "How important is X to you?" or "Do you prefer A or B?".
 - Instead, change the question to ask the assistant to choose or evaluate something FOR THE USER:
-  - e.g., “Which option would suit me better?” instead of “Do you prefer A or B?”.
+  - e.g., "Which option would suit me better?" instead of "Do you prefer A or B?".
 
 STRICT PROHIBITIONS:
 - Do NOT copy any example preferences from this instruction.
@@ -184,7 +208,15 @@ STRICT PROHIBITIONS:
 - Do NOT ask about attributes that are irrelevant or not mentioned in metadata.
 - Do NOT make up any new product attributes.
 - Do NOT mention the specific product name/title in questions.
-- Do NOT state user's preferences explicitly in questions.
+- Do NOT state the user's preferences explicitly in questions.
+- ABSOLUTELY FORBIDDEN question patterns:
+  - Any question containing:
+    - "Do you prefer"
+    - "Would you prefer"
+    - "How important is it to you"
+    - "Would you prioritize"
+    - "Do you have a preference for"
+    - "Is it essential to you that"
 
 OUTPUT FORMAT (JSON):
 
@@ -194,11 +226,12 @@ Return ONLY a JSON object with:
    - 2–6 short strings,
    - each describing one preference/sensitivity derived ONLY from THIS user's reviews,
    - no invented details,
-   - no copying from examples.
+   - no copying from any example text.
 
 2. "generated_questions":
    - 5–8 natural questions,
    - each based ONLY on attributes present in THIS product's metadata,
+   - each phrased as the user asking the assistant to decide or judge something FOR THEM,
    - each designed so that answers would differ depending on the user's preferences,
    - questions MUST NOT explicitly state any user preference.
 
@@ -216,10 +249,10 @@ Example STRUCTURE (values are placeholders and MUST NOT be copied):
 }}
 
 IMPORTANT REMINDERS:
-- Output ONLY valid JSON - NO comments like // or /* */ in the JSON output
-- The `latent_preferences` must be derived from THIS user's actual reviews
-- Questions must only use attributes from THIS product's metadata
-- Do NOT copy any example text - generate everything fresh based on the actual data provided
+- Output ONLY valid JSON - NO comments like // or /* */ in the JSON output.
+- The "latent_preferences" must be derived from THIS user's actual reviews.
+- "generated_questions" must use ONLY attributes from THIS product's metadata.
+- Do NOT copy any example text - generate everything fresh based on the actual data provided.
 """
 
     return prompt
