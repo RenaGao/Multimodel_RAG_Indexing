@@ -43,14 +43,8 @@ def build_v2_prompt(user_history, target_product):
     """
     Build the v2 prompt using decision-point approach.
     Questions look generic on the surface but create scenarios where RAG adds value.
-
-    Args:
-        user_history: List of 3–5 products with ratings and reviews
-        target_product: The target product (for context, not directly mentioned)
-
-    Returns:
-        Formatted prompt string
     """
+
     # -------------------------
     # 1. Format user history
     # -------------------------
@@ -127,6 +121,7 @@ Do NOT rely on any templates, stereotypes, or memorized category schemas.
 Everything must be derived from THIS target product's metadata.
 
 ATTRIBUTE CONSTRAINTS (EXTREMELY IMPORTANT):
+
 You are ONLY allowed to generate questions about attributes that are EXPLICITLY present,
 or strongly implied, in the target product metadata.
 
@@ -152,12 +147,35 @@ For example:
 You MUST infer the type ONLY from the metadata itself.
 
 PREFERENCE EXTRACTION RULE (CRITICAL):
+
 You MUST infer the user's preferences ONLY from the user reviews provided.
 - Extract themes that repeatedly appear across their reviews (comfort, durability, style, quality, etc.).
 - Each latent preference MUST be supported by evidence in the reviews.
 - You may NOT invent any preference that does not appear in THIS user's reviews.
 - You may NOT reuse or copy preferences from any example in this instruction.
 If the reviews do NOT provide evidence for a preference, you MUST NOT include it.
+
+QUESTION STYLE EXAMPLE (DO NOT COPY TEXT, ONLY STYLE):
+
+Here is an example of GOOD questions for a case where the product happens to be a tank top:
+
+- "I'm looking for a tank top. What would you recommend?"
+- "What style of tank top suits me best - fitted or relaxed?"
+- "Which material would be most comfortable for me?"
+- "Which color options align with my usual preferences?"
+- "What size should I consider based on my past purchases?"
+- "Is this tank top suitable for both workouts and casual outings?"
+- "How does the fit of this tank top compare to what I usually wear?"
+- "What care instructions should I consider for maintaining quality?"
+
+These questions are GOOD because:
+- They ask the assistant to recommend or judge options FOR THE USER.
+- They hint at decisions that depend on the user's past behavior ("my usual preferences", "what I usually wear", "based on my past purchases").
+- They do NOT ask the user to state preferences directly.
+- They refer to attributes that actually exist for that product (material, style, size, color, use case, care).
+
+For YOUR task, you must generate questions with a SIMILAR STYLE and FUNCTION,
+but using ONLY attributes that are present in THIS target product's metadata.
 
 QUESTION DESIGN RULE (VERY IMPORTANT):
 
@@ -167,14 +185,16 @@ choosing or evaluating THIS specific product or similar options.
 Your questions MUST:
 - NOT ask the user about their preferences (no "do you prefer…", "how important is it to you…",
   "would you prioritize…", "do you have a preference for…", etc.).
-- NOT include explicit preference words like "I like…", "I prefer…", "I care a lot about…".
+- NOT include explicit preference statements like "I like…", "I prefer…", "I care a lot about…".
 - Sound like the user is asking the assistant to decide or suggest something FOR THEM, for example:
   - "What would you recommend for me?"
   - "Which option would suit me better?"
   - "Do you think this would be suitable for me?"
   - "What should I pay attention to in my case?"
-- Each question MUST clearly refer to the user (e.g., using "for me", "for someone like me",
-  "would this work well for me", "how does this compare to what I usually use").
+- Each question MUST clearly refer to the user, using phrases like:
+  - "for me", "for someone like me", "for my needs",
+  - "based on my past purchases", "compared to what I usually use/wear",
+  - "my usual choices", "how I typically use this kind of product".
 - Create decision points where:
   - WITHOUT user reviews, the assistant can give only generic answers.
   - WITH user reviews, the assistant can tailor the answer based on this user's history.
@@ -203,20 +223,29 @@ IMPORTANT:
   - e.g., "Which option would suit me better?" instead of "Do you prefer A or B?".
 
 STRICT PROHIBITIONS:
+
 - Do NOT copy any example preferences from this instruction.
 - Do NOT reuse generic templates about clothing, books, shoes, electronics, or any category.
 - Do NOT ask about attributes that are irrelevant or not mentioned in metadata.
 - Do NOT make up any new product attributes.
 - Do NOT mention the specific product name/title in questions.
 - Do NOT state the user's preferences explicitly in questions.
-- ABSOLUTELY FORBIDDEN question patterns:
-  - Any question containing:
-    - "Do you prefer"
-    - "Would you prefer"
-    - "How important is it to you"
-    - "Would you prioritize"
-    - "Do you have a preference for"
-    - "Is it essential to you that"
+
+ABSOLUTELY FORBIDDEN question patterns:
+- Any question starting with or containing:
+  - "Do you prefer"
+  - "Would you prefer"
+  - "How important is it to you"
+  - "Would you prioritize"
+  - "Do you have a preference for"
+  - "Is it essential to you that"
+- Generic product-explanation questions such as:
+  - "What are the advantages of ..."
+  - "What are the key benefits of ..."
+  - "Can you tell me about ..."
+  - "How does this product perform in general?"
+These are BAD because a generic assistant and a personalized assistant
+would answer them almost the same way.
 
 OUTPUT FORMAT (JSON):
 
