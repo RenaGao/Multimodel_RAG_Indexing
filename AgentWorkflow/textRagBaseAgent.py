@@ -110,12 +110,12 @@ def main():
     print(f"{'='*80}\n")
 
     # question json file path
-    json_path = Path("../questions/Amazon_Fashion_questions_v2_20251121_222830.json")
+    json_path = Path("../questions_v2/All_Beauty_questions_20251127_234838.json.json")
 
     all_questions_dict = load_all_questions(json_path)
 
     all_users_list = load_all_users(json_path)
-    selected_users = all_users_list[:1]
+    selected_users = all_users_list[:]
 
     # how many questions can run for one category
     per_user_limit = None # run all questions in the category
