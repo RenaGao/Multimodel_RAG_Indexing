@@ -141,18 +141,42 @@ You MUST infer the user's preferences ONLY from the user reviews provided.
 Extract the themes that repeatedly appear across their reviews.
 You may NOT invent any preference that does not appear in the reviews.
 
-QUESTION DESIGN RULE:
+QUESTION DESIGN RULE (VERY IMPORTANT):
+
+Write questions as if the USER is asking a shopping assistant for help
+choosing or evaluating THIS specific product or similar options.
+
 Your questions MUST:
-- NOT expose the user's preferences explicitly.
-- Create decision points where different answers would occur depending on user preferences.
+- NOT ask the user about their preferences (no “do you prefer…”, “how important is it to you…”, “would you prioritize…”, etc.).
+- NOT mention any preference words (“I like…”, “I prefer…”, “I care a lot about…”).
+- Sound like the user is asking the assistant to decide or suggest something FOR THEM:
+  - e.g., “Which option would you recommend for me?”, “What should I pay attention to?”, “Do you think this would be suitable for me?”.
+- Create decision points where a generic assistant and a preference-aware assistant would give DIFFERENT answers.
+  - The question itself stays neutral.
+  - The personalization happens only in the ANSWER, not in the wording of the question.
 - Be natural for THIS product type.
 - Use ONLY attributes present in THIS product's metadata.
 
 RAG VALUE TEST (CRITICAL):
-For EACH question you generate, ask yourself:
-- WITHOUT RAG: What would agent answer? (generic catalog response)
-- WITH RAG: What would agent answer? (personalized based on user's reviews)
-- If the answers would be the SAME → BAD question, revise it!
+
+For EACH question you generate, simulate:
+
+- WITHOUT RAG (no user reviews):
+  - The assistant can only see the product metadata and the text of the question.
+  - It can give only generic, one-size-fits-all answers.
+
+- WITH RAG (has user reviews):
+  - The assistant sees the same metadata and question,
+  - PLUS the user's past reviews, and can use them to tailor the answer.
+
+If a question would lead to almost the SAME answer in both cases,
+it is a BAD question and you must revise it.
+
+IMPORTANT:
+- You must NOT fix this by asking directly about preferences.
+  - Do NOT change the question into “How important is X to you?” or “Do you prefer A or B?”.
+- Instead, change the question to ask the assistant to choose or evaluate something FOR THE USER:
+  - e.g., “Which option would suit me better?” instead of “Do you prefer A or B?”.
 
 STRICT PROHIBITIONS:
 - Do NOT copy any example preferences from this instruction.
