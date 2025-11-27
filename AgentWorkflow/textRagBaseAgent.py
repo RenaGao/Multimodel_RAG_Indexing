@@ -376,7 +376,7 @@ def main():
 
         # Export dialogues for evaluation
         eval_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        eval_output_path = f"./All_Beauty_dial/eval_dialogues_{user}_{reply_prompt_version}_{eval_timestamp}.json"
+        eval_output_path = f"./Digital_Music_dial/eval_dialogues_{user}_{reply_prompt_version}_{eval_timestamp}.json"
         export_dialogues_for_eval(user, output_path=eval_output_path)
 
     output_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
