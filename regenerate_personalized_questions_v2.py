@@ -66,40 +66,26 @@ def build_v2_prompt(user_history, target_product):
     target_title = target_meta.get("title", "product")
     target_category = target_meta.get("main_category", "shopping")
 
-    # Extract generic product type (e.g., "tank top" not full brand/model name)
-    target_words = target_title.lower().split()
-    product_keywords = {
-        "top": "top", "tank": "tank top", "dress": "dress", "shirt": "shirt",
-        "hoodie": "hoodie", "sweater": "sweater", "pants": "pants", "jeans": "jeans",
-        "shorts": "shorts", "skirt": "skirt", "jacket": "jacket", "coat": "coat",
-        "shoes": "shoes", "boots": "boots", "sandals": "sandals", "sneakers": "sneakers",
-        "bag": "bag", "purse": "purse", "wallet": "wallet", "belt": "belt",
-        "hat": "hat", "scarf": "scarf", "gloves": "gloves", "socks": "socks"
-    }
-
-    # Find product type from title
-    product_type = "product"  # default
-    for word in target_words:
-        if word in product_keywords:
-            product_type = product_keywords[word]
-            break
-
-    # Special case: if "tank" and "top" both present, use "tank top"
-    if "tank" in target_words and "top" in target_words:
-        product_type = "tank top"
-
-    # Extract product metadata for decision points
+    # Extract product metadata
     target_details = target_meta.get("details", {})
-    available_colors = target_meta.get("colors", [])
-    available_sizes = target_meta.get("sizes", [])
+    target_features = target_meta.get("features", [])
+    target_description = target_meta.get("description", [])
 
-    # Format metadata text
+    # Format metadata text - include ALL available metadata
     metadata_text = f"Title: {target_title}\n"
     metadata_text += f"Category: {target_category}\n"
-    if available_colors:
-        metadata_text += f"Available Colors: {', '.join(available_colors)}\n"
-    if available_sizes:
-        metadata_text += f"Available Sizes: {', '.join(available_sizes)}\n"
+
+    if target_features:
+        metadata_text += "Features:\n"
+        for feat in target_features[:10]:  # Limit to first 10 features
+            if feat:
+                metadata_text += f"  - {feat}\n"
+
+    if target_description:
+        desc_text = " ".join([str(d) for d in target_description if d])[:500]  # Limit length
+        if desc_text:
+            metadata_text += f"Description: {desc_text}\n"
+
     if target_details:
         metadata_text += "Details:\n"
         for key, value in target_details.items():
@@ -108,35 +94,59 @@ def build_v2_prompt(user_history, target_product):
     prompt = f"""You are a question generator for a personalized shopping assistant.
 
 INPUTS:
-- Target product metadata (category, material, fit, colors, etc.).
+- Target product metadata (all available attributes).
 - 3–5 of the user's past product reviews (with metadata of those items).
 
 TARGET PRODUCT METADATA:
-Product Type: {product_type}
-Category: {target_category}
 {metadata_text}
 
 USER'S PAST REVIEWS:
 {history_text}
 
-SCENARIO:
-This is a product RECOMMENDATION conversation. The user is shopping and wants the agent to recommend products.
-- User does NOT know about the target product yet - they're asking for recommendations
-- Agent should use RAG to retrieve user's review history and make personalized recommendations
-- Questions should be a mix of recommendation requests and follow-up detail questions
+CATEGORY & ATTRIBUTE AWARENESS (IMPORTANT):
 
-GOAL:
-Generate user-side shopping questions that:
-- Look natural and relatively generic on the surface
-- Do NOT explicitly state the user's detailed preferences
-- Create decision points where RAG of user reviews enables personalized answers
-- Frame as recommendation requests, not product review questions
+You MUST determine:
+- what kind of product this is,
+- which attributes matter for evaluating or choosing it,
+ONLY from the target product's metadata provided above.
 
-CRITICAL CONSTRAINTS:
-- DO NOT mention the specific product name/title (e.g., "Woolly Clothing Women's Merino...")
-- Use generic product type instead: "{product_type}"
-- Frame questions as recommendation requests ("what would you recommend?", "which one should I get?")
-- Mix recommendation questions (60-70%) with follow-up detail questions (30-40%)
+Do NOT use any assumptions about product types such as clothing, books, electronics, or shoes.
+Do NOT rely on any templates, stereotypes, or memorized category schemas.
+Everything must be derived from THIS target product's metadata.
+
+ATTRIBUTE CONSTRAINTS:
+You are ONLY allowed to generate questions about attributes that are EXPLICITLY present,
+or strongly implied, in the target product metadata.
+
+Examples of allowed attribute sources:
+- title
+- features
+- material
+- format
+- dimensions
+- usage statements (e.g., "exercise", "home", "casual")
+- included accessories
+- technical specs
+- pattern, print, color, if shown in metadata
+- category name fields
+
+You MUST NOT generate questions about attributes that do NOT exist in the metadata.
+For example:
+- Do NOT ask about size, fit, color, or patterns unless metadata mentions them.
+- Do NOT ask about battery life unless metadata mentions electronics features.
+- Do NOT ask about genre unless metadata mentions books or literary attributes.
+
+PREFERENCE EXTRACTION RULE:
+You MUST infer the user's preferences ONLY from the user reviews provided.
+Extract the themes that repeatedly appear across their reviews.
+You may NOT invent any preference that does not appear in the reviews.
+
+QUESTION DESIGN RULE:
+Your questions MUST:
+- NOT expose the user's preferences explicitly.
+- Create decision points where different answers would occur depending on user preferences.
+- Be natural for THIS product type.
+- Use ONLY attributes present in THIS product's metadata.
 
 RAG VALUE TEST (CRITICAL):
 For EACH question you generate, ask yourself:
@@ -144,155 +154,48 @@ For EACH question you generate, ask yourself:
 - WITH RAG: What would agent answer? (personalized based on user's reviews)
 - If the answers would be the SAME → BAD question, revise it!
 
-Examples of BAD vs GOOD questions:
-
-BAD: "Are there soft and breathable {product_type}s?"
-   - Without RAG: "Yes, we have these soft breathable options..." (lists products)
-   - With RAG: "Yes, we have these soft breathable options..." (SAME answer)
-   - RAG adds NO value
-
-GOOD: "Which material would work best for me?"
-   - Without RAG: "We have cotton, merino wool, polyester..." (generic list)
-   - With RAG: "Based on your reviews, you're sensitive to itchy fabrics and prefer soft cotton. I recommend cotton or merino."
-   - RAG enables PERSONALIZATION
-
-BAD: "What colors are available?"
-   - Without RAG: "Black, white, red, blue..." (catalog listing)
-   - With RAG: "Black, white, red, blue..." (SAME answer)
-   - RAG adds NO value
-
-GOOD: "Which color should I choose?"
-   - Without RAG: "We have black, white, red, blue. What's your preference?"
-   - With RAG: "You typically choose neutral colors and avoid bright prints. I recommend black or white."
-   - RAG enables PERSONALIZATION
-
-BAD: "Can you suggest a {product_type} for layering?"
-   - Without RAG: "These {product_type}s work well for layering..." (generic)
-   - With RAG: "These {product_type}s work well for layering..." (SAME answer)
-   - User already stated use case, RAG not needed
-
-GOOD: "Is this suitable for how I typically use {product_type}s?"
-   - Without RAG: "It works for various uses..." (generic)
-   - With RAG: "Based on your reviews, you use {product_type}s for both workouts and casual wear. This one is perfect for both."
-   - RAG discovers user's use case
-
-QUESTION TYPES (generate a balanced mix - ALL must pass RAG VALUE TEST):
-
-A. RECOMMENDATION Questions (60-70%) - MUST create RAG decision points:
-   GOOD: "I'm looking for a {product_type}. What would you recommend?"
-      → RAG: Recommends based on user's material/fit/color/use preferences from reviews
-
-   GOOD: "Which {product_type} would work best for me?"
-      → RAG: Analyzes user's typical use cases and preferences to personalize
-
-   GOOD: "What style of {product_type} suits me?"
-      → RAG: Checks user's past style preferences (relaxed vs fitted, casual vs sporty)
-
-   DON'T: "Which {product_type} is best for summer?" (generic, no RAG needed)
-   DON'T: "Are there breathable {product_type}s?" (user states need, just filter catalog)
-
-B. FOLLOW-UP Questions (30-40%) - MUST require RAG to personalize:
-   GOOD: "Which color should I choose?"
-      → RAG: Knows user prefers neutral vs bright, solid vs prints
-
-   GOOD: "What size would work for me?"
-      → RAG: Knows user's sizing history and fit preferences (tight vs loose)
-
-   GOOD: "Which material would be best?"
-      → RAG: Knows user's material sensitivities (itchy wool, soft cotton, etc.)
-
-   GOOD: "Is this suitable for how I typically use {product_type}s?"
-      → RAG: Knows user's use cases from reviews (workout, casual, layering, etc.)
-
-   DON'T: "What colors are available?" (catalog info, no personalization)
-   DON'T: "How should I wash it?" (generic care info, no RAG needed)
-
-WRONG Examples (DO NOT GENERATE):
-   BAD: "Which size works for the Woolly Clothing Women's Merino..." (mentions product name)
-   BAD: "I prefer soft fabrics. What do you recommend?" (states preference explicitly)
-   BAD: "Are there {product_type}s that are soft and breathable?" (states needs, no RAG value)
-   BAD: "What colors are available?" (generic catalog, RAG doesn't help)
-
-PROCESS (INTERNALLY, DO NOT OUTPUT THESE STEPS):
-1. From the user's past reviews, infer their preferences and sensitivities
-   (e.g., typical colors, fit, comfort, durability, washing issues, use cases).
-2. Identify 5–10 "decision points" where these preferences matter:
-   - e.g., color choice, size choice, fit (tight vs relaxed), warmth vs breathability,
-     durability vs softness, work vs casual use, etc.
-3. For each decision point, design questions that:
-   - Start with recommendation requests (60-70%)
-   - Follow with detail questions about recommendations (30-40%)
-   - Do NOT mention specific product names
-   - Do NOT state user's preferences explicitly
-
-QUESTION QUALITY CHECKLIST:
-Before finalizing each question, verify it passes ALL these tests:
-
-1. Does this question state what the user wants? (soft, breathable, for layering, etc.)
-   → If YES, REVISE to be open-ended ("Which material?" not "Are there soft ones?")
-
-2. Can agent answer this with just product catalog, without user history?
-   → If YES, REVISE to require user preference knowledge
-
-3. Would the answer be DIFFERENT if agent knew user's review history?
-   → If NO, REVISE to create a real decision point
-
-4. Does question ask about user's needs/preferences? (for me, suits me, typically use)
-   → If NO, ADD reference to make it personalized
-
-Good patterns:
-   "Which X?" (forces choice based on preferences)
-   "What X suits me?" (requires knowing user)
-   "Is this suitable for how I use X?" (requires knowing use cases)
-
-Bad patterns:
-   "Are there X that are Y?" (just filters catalog)
-   "What X options exist?" (just lists catalog)
-   "I need X for Y, what do you recommend?" (states need)
-
-COHERENCE REQUIREMENT:
-- ALL questions must be about the SAME product type: "{product_type}"
-- This is ONE shopping conversation for finding a {product_type}
-- Questions should flow naturally: recommendation requests → follow-up details
+STRICT PROHIBITIONS:
+- Do NOT copy any example preferences from this instruction.
+- Do NOT reuse generic templates about clothing, books, shoes, electronics, or any category.
+- Do NOT ask about attributes that are irrelevant or not mentioned in metadata.
+- Do NOT make up any new product attributes.
+- Do NOT mention the specific product name/title in questions.
+- Do NOT state user's preferences explicitly in questions.
 
 OUTPUT FORMAT (JSON):
+
+Return ONLY a JSON object with:
+
+1. "latent_preferences":
+   - 2–6 short strings,
+   - each describing one preference/sensitivity derived ONLY from THIS user's reviews,
+   - no invented details,
+   - no copying from examples.
+
+2. "generated_questions":
+   - 5–8 natural questions,
+   - each based ONLY on attributes present in THIS product's metadata,
+   - each designed so that answers would differ depending on the user's preferences,
+   - questions MUST NOT explicitly state any user preference.
+
+Example STRUCTURE (values are placeholders and MUST NOT be copied):
+
 {{
   "latent_preferences": [
-    "prefers neutral colors (black, gray, white), avoids bright prints",
-    "sensitive to itchy fabrics, prefers soft cotton or merino wool",
-    "likes relaxed fit, not tight or clingy",
-    "uses {product_type}s for both workouts and casual wear",
-    "concerned about durability and easy washing"
+    "PREFERENCE_1",
+    "PREFERENCE_2"
   ],
   "generated_questions": [
-    "I'm looking for a {product_type}. What would you recommend?",
-    "Which material would work best for me?",
-    "What style would suit me - fitted or relaxed?",
-    "Which color should I choose?",
-    "What size would work for me?",
-    "Is this suitable for how I typically use {product_type}s?",
-    "How does the fit run - should I size up or down for my preference?"
+    "QUESTION_1",
+    "QUESTION_2"
   ]
 }}
 
-EXPLANATION - How each question demonstrates RAG value:
-- Q1: Needs ALL user preferences to make personalized recommendation
-- Q2: RAG discovers user is sensitive to itchy fabrics, prefers soft materials
-- Q3: RAG discovers user prefers relaxed over fitted styles
-- Q4: RAG discovers user prefers neutral colors, avoids bright prints
-- Q5: RAG discovers user's sizing history and preferences
-- Q6: RAG discovers user's use cases (workout vs casual vs both)
-- Q7: RAG discovers user's fit preferences (tight vs loose)
-
 IMPORTANT REMINDERS:
 - Output ONLY valid JSON - NO comments like // or /* */ in the JSON output
-- The `latent_preferences` are only for debugging and evaluation - they must NOT appear in questions
-- 60-70% of questions should be RECOMMENDATION requests
-- 30-40% of questions should be FOLLOW-UP details
-- DO NOT mention specific product names - use generic "{product_type}" only
-- Questions should flow naturally from asking for recommendations to asking about details
-
-Generate 5-8 questions that cover different decision points (use case, color, size, fit, material, care, etc.).
+- The `latent_preferences` must be derived from THIS user's actual reviews
+- Questions must only use attributes from THIS product's metadata
+- Do NOT copy any example text - generate everything fresh based on the actual data provided
 """
 
     return prompt
