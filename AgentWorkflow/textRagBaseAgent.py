@@ -110,7 +110,7 @@ def main():
     print(f"{'='*80}\n")
 
     # question json file path
-    json_path = Path("../questions_v2/Digital_Music_questions_20251127_235831.json")
+    json_path = Path("../questions_v2/Clothing_Shoes_and_Jewelry_questions_20251127_235753.json.json")
 
     all_questions_dict = load_all_questions(json_path)
 
@@ -376,7 +376,7 @@ def main():
 
         # Export dialogues for evaluation
         eval_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        eval_output_path = f"./Digital_Music_dial/eval_dialogues_{user}_{reply_prompt_version}_{eval_timestamp}.json"
+        eval_output_path = f"./Clothing_Shoes_and_Jewelry_dial/eval_dialogues_{user}_{reply_prompt_version}_{eval_timestamp}.json"
         export_dialogues_for_eval(user, output_path=eval_output_path)
 
     output_ts = datetime.now().strftime("%Y%m%d_%H%M%S")

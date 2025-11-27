@@ -313,19 +313,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--questions",
         type=str,
-        default="/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Multimodel_RAG_Indexing/questions_v2/Digital_Music_questions_20251127_235831.json",
+        default="/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Multimodel_RAG_Indexing/questions_v2/Clothing_Shoes_and_Jewelry_questions_20251127_235753.json",
         help="Path to questions JSON file (e.g., Amazon_Fashion_questions_20251121_222830.json)"
     )
     parser.add_argument(
         "--user-data",
         type=str,
-        default="/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/Digital_Music_top_100_user_data.json",
+        default="/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/Clothing_Shoes_and_Jewelry_top_100_user_data.json",
         help="Path to user data JSON file (e.g., Amazon_Fashion_top_100_user_data.json)"
     )
     parser.add_argument(
         "--output",
         type=str,
-        default="Digital_Music_user_profiles.json",
+        default="Clothing_Shoes_and_Jewelry_user_profiles.json",
         help="Output path for generated profiles (default: user_profiles.json)"
     )
     parser.add_argument(

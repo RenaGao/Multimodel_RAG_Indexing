@@ -22,7 +22,7 @@ VSTORE_DIR = BASE_DIR / "vectorstore"
 CATALOG_DIR = VSTORE_DIR / "catalog"
 USERS_DIR   = VSTORE_DIR / "users"
 
-DATASET_CATEGORY = "Digital_Music"  # Change as needed
+DATASET_CATEGORY = "Clothing_Shoes_and_Jewelry"  # Change as needed
 
 for p in [VSTORE_DIR, CATALOG_DIR, USERS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
