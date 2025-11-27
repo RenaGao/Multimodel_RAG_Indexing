@@ -325,7 +325,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output",
         type=str,
-        default="user_profiles.json",
+        default="Digital_Music_user_profiles.json",
         help="Output path for generated profiles (default: user_profiles.json)"
     )
     parser.add_argument(
