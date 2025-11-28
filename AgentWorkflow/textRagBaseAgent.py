@@ -8,7 +8,8 @@ from pathlib import Path
 import json
 import sys
 import argparse
-from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, append_agent_message, save_round_summary, load_previous_round_summaries, get_current_round_number, set_dataset_category
+import re
+from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, append_agent_message, save_round_summary, load_previous_round_summaries, get_current_round_number, set_dataset_category, clear_user_storage
 from agent_prompts import get_dialogue_history_prompt, get_recommender_prompt, get_reasoner_prompt, get_reply_prompt
 
 # Custom logger class to capture all print outputs
@@ -51,15 +52,25 @@ def get_completed_users(category):
         return set()
 
     completed = set()
-    # Files are named: text_rag_dialogues_{user_id}_{version}_{timestamp}.json
+    # Files are named: text_rag_dialogues_{user_id}_{version}_{date}_{time}.json
     for f in output_dir.glob("text_rag_dialogues_*.json"):
-        # Extract user_id from filename
-        # text_rag_dialogues_{user_id}_{version}_{timestamp}.json
-        parts = f.stem.split("_")  # Remove .json and split
-        # parts: ['text', 'rag', 'dialogues', user_id, version, timestamp]
-        if len(parts) >= 6:
-            user_id = parts[3]  # user_id is at index 3
+        stem = f.stem  # Remove .json
+        parts = stem.split("_")
+
+        # Find index of 'dialogues' and version (v1, v2, v3, ...)
+        dialogues_idx = parts.index("dialogues") if "dialogues" in parts else -1
+
+        version_idx = -1
+        for i, p in enumerate(parts):
+            if re.match(r'^v\d+$', p):  # Match v1, v2, v3, etc.
+                version_idx = i
+                break
+
+        # Extract user_id between 'dialogues' and version
+        if dialogues_idx >= 0 and version_idx > dialogues_idx + 1:
+            user_id = "_".join(parts[dialogues_idx + 1 : version_idx])
             completed.add(user_id)
+
     return completed
 
 def is_category_completed(questions_path, category):
@@ -121,7 +132,10 @@ def run_single_category(json_path, reply_prompt_version, category):
 
     all_questions_dict = load_all_questions(json_path)
     all_users_list = load_all_users(json_path)
-    selected_users = all_users_list[:]
+
+    # Filter out completed users for resume capability
+    completed_users = get_completed_users(category)
+    selected_users = [u for u in all_users_list if u not in completed_users]
 
     # how many questions can run for one category
     per_user_limit = None  # run all questions in the category
@@ -132,7 +146,9 @@ def run_single_category(json_path, reply_prompt_version, category):
     print(f"Configuration:")
     print(f"  Category: {category}")
     print(f"  Reply Prompt Version: {reply_prompt_version}")
-    print(f"  Selected users: {len(selected_users)}")
+    print(f"  Total users: {len(all_users_list)}")
+    print(f"  Completed users: {len(completed_users)}")
+    print(f"  Remaining users: {len(selected_users)}")
     print(f"  Per user limit: {per_user_limit or 'All questions'}")
     print(f"  Question file: {json_path}")
     print()
@@ -330,6 +346,9 @@ def run_single_category(json_path, reply_prompt_version, category):
         eval_output_path = eval_dir / f"text_rag_dialogues_{user}_{reply_prompt_version}_{eval_timestamp}.json"
         export_dialogues_for_eval(user, output_path=str(eval_output_path))
 
+        # Clear user storage after each user completes
+        clear_user_storage()
+
     return results
 
 def main():
@@ -364,6 +383,9 @@ def main():
 
     load_dotenv()
     assert os.getenv("QWEN_API_KEY"), "Missing QWEN_API_KEY in .env"
+
+    # Clear user storage at script start to avoid cross-category conflicts
+    clear_user_storage()
 
     # Setup logging
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")

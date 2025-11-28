@@ -2,6 +2,7 @@ import json
 import re
 import pickle
 import hashlib
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Optional
 from datetime import datetime
@@ -37,6 +38,13 @@ def get_dataset_category() -> str:
 
 for p in [VSTORE_DIR, CATALOG_DIR, USERS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
+
+def clear_user_storage():
+    """Clear entire user storage directory."""
+    if USERS_DIR.exists():
+        shutil.rmtree(USERS_DIR)
+        USERS_DIR.mkdir(parents=True, exist_ok=True)
+        print(f"[CLEAR] Cleared entire USERS_DIR")
 
 def item_index_dir() -> Path:
     return CATALOG_DIR / get_dataset_category() / "item_index_qwen3"
