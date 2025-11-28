@@ -157,7 +157,7 @@ def run_single_category(json_path, reply_prompt_version, category):
     llm_config = {
         "config_list": [{
             "model": "qwen/qwen3-8b",
-            "api_key": os.getenv("QWEN_API_KEY"),
+            "api_key": os.getenv("OPENROUTER_API_KEY"),
             "base_url": "https://openrouter.ai/api/v1",
             "price": [0.001, 0.002],
             "timeout": 120,
