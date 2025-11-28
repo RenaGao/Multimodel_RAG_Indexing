@@ -344,7 +344,13 @@ def run_single_category(json_path, reply_prompt_version, category):
         eval_dir = Path(f"./dialogues_output/{category}")
         eval_dir.mkdir(parents=True, exist_ok=True)
         eval_output_path = eval_dir / f"text_rag_dialogues_{user}_{reply_prompt_version}_{eval_timestamp}.json"
-        export_dialogues_for_eval(user, output_path=str(eval_output_path))
+
+        # Check if export succeeded
+        export_result = export_dialogues_for_eval(user, output_path=str(eval_output_path))
+        if export_result is None:
+            print(f"[WARNING] Failed to export dialogues for user {user}")
+        else:
+            print(f"[SUCCESS] Exported dialogues to: {export_result}")
 
         # Clear user storage after each user completes
         clear_user_storage()
