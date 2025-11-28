@@ -44,6 +44,30 @@ def extract_category(filename):
     basename = os.path.basename(filename)
     return basename.split("_questions_")[0]
 
+def get_completed_users(category):
+    """Get set of user IDs that have completed output files."""
+    output_dir = Path(f"./dialogues_output/{category}")
+    if not output_dir.exists():
+        return set()
+
+    completed = set()
+    # Files are named: text_rag_dialogues_{user_id}_{version}_{timestamp}.json
+    for f in output_dir.glob("text_rag_dialogues_*.json"):
+        # Extract user_id from filename
+        # text_rag_dialogues_{user_id}_{version}_{timestamp}.json
+        parts = f.stem.split("_")  # Remove .json and split
+        # parts: ['text', 'rag', 'dialogues', user_id, version, timestamp]
+        if len(parts) >= 6:
+            user_id = parts[3]  # user_id is at index 3
+            completed.add(user_id)
+    return completed
+
+def is_category_completed(questions_path, category):
+    """Check if all users in questions file have output files."""
+    users = set(load_all_users(questions_path))
+    completed = get_completed_users(category)
+    return users.issubset(completed)
+
 def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
     """
     Flow:
@@ -397,6 +421,12 @@ def main():
 
         for qf in question_files:
             category = extract_category(qf)
+
+            # Check if category is already completed
+            if is_category_completed(qf, category):
+                print(f"Skipping {category} (already completed)")
+                continue
+
             print(f"\n{'#'*80}")
             print(f"# Processing Category: {category}")
             print(f"# Question file: {qf}")
