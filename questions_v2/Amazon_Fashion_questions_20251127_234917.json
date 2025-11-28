@@ -153,21 +153,19 @@
       "review_title": "Good exercise shirt"
     },
     "latent_preferences": [
-      "prefers neutral colors (black, gray, white), avoids bright prints",
-      "sensitive to itchy fabrics, prefers soft cotton or merino wool",
-      "likes relaxed fit, not tight or clingy",
-      "uses tank tops for both workouts and casual wear",
-      "concerned about durability and easy washing"
+      "Comfort in clothing",
+      "Durability and quality",
+      "Versatile styles for various occasions",
+      "Appealing aesthetics"
     ],
     "generated_questions": [
-      "I'm looking for a tank top. What would you recommend?",
-      "What style of tank top suits me best - fitted or relaxed?",
-      "Which material would be most comfortable for me?",
-      "Which color options align with my usual preferences?",
-      "What size should I consider based on my past purchases?",
-      "Is this tank top suitable for both workouts and casual outings?",
-      "How does the fit of this tank top compare to what I usually wear?",
-      "What care instructions should I consider for maintaining quality?"
+      "What are some options for a tank top that would be comfortable to wear throughout the day?",
+      "Can you recommend a tank top that combines both comfort and durability?",
+      "Which styles of tank tops are versatile enough for both casual wear and workouts?",
+      "What material would provide the best comfort for my tank top choices?",
+      "Are there tank tops available that have unique designs or colors that would appeal to me?",
+      "What should I consider about the care instructions when choosing a tank top that lasts?",
+      "Can you suggest a tank top that has a flattering fit based on how I typically wear these kinds of items?"
     ]
   },
   {
@@ -319,21 +317,18 @@
       "review_title": "Going to the beach soon"
     },
     "latent_preferences": [
-      "prefers neutral colors (black, gray, white), avoids bright prints",
-      "sensitive to itchy fabrics, prefers soft cotton or similar materials",
-      "likes relaxed fit, not tight or clingy",
-      "uses hats for both workouts and casual wear",
-      "concerned about durability and easy washing"
+      "Comfort in materials used",
+      "Durability and quality of items",
+      "Preference for versatile styles"
     ],
     "generated_questions": [
-      "I'm looking for a hat. What would you recommend?",
-      "Which color would suit me best?",
-      "What material would be the most comfortable for me?",
-      "Is this hat suitable for my casual and workout needs?",
-      "What size would fit me well based on my previous experiences?",
-      "How does the fit run for this style - should I consider sizing up or down?",
-      "Which style of hat do you think would complement my typical outfits?",
-      "Are there options that are easy to care for and durable?"
+      "What style of hat would suit me best for various occasions?",
+      "Which material would be most comfortable for me when wearing a hat?",
+      "What should I pay attention to when choosing a hat for my needs?",
+      "How do different hats compare in terms of durability?",
+      "Are there any specific hat designs that offer versatility for casual and formal wear?",
+      "What kind of decorative details are popular for hats this season?",
+      "How should I care for a hat to maintain its quality over time?"
     ]
   },
   {
@@ -490,21 +485,19 @@
       "review_title": "Not Stretchy and Run Really Tight"
     },
     "latent_preferences": [
-      "prefers neutral colors (black, gray, white), avoids bright prints",
-      "sensitive to itchy fabrics, prefers soft cotton or merino wool",
-      "likes relaxed fit, not tight or clingy",
-      "uses jeanss for both workouts and casual wear",
-      "concerned about durability and easy washing"
+      "Quality material",
+      "Comfortable fit",
+      "Durability after washing",
+      "Versatile for casual wear"
     ],
     "generated_questions": [
-      "I'm looking for a jeans. What would you recommend?",
-      "Which color would work best for me?",
-      "What fit do you think I should choose - relaxed or slim?",
-      "Which material would be most comfortable for my skin?",
-      "What size would be ideal based on my usual fit?",
-      "Is this style suitable for both casual wear and outdoor activities?",
-      "How well do these jeans hold up after washing?",
-      "Would you recommend any specific options for durability?"
+      "I'm looking for a jeans. What would you recommend for someone who values quality material?",
+      "What style of jeans would suit me best for casual outings?",
+      "Which material would be the most comfortable for me in a jeans?",
+      "What should I pay attention to when choosing jeans for versatility?",
+      "How do the durability and care instructions of these jeans compare to what I usually wear?",
+      "What features should I look for in jeans to ensure they maintain their quality after washing?",
+      "Are there specific fit options in jeans that tend to be more comfortable for someone like me?"
     ]
   },
   {
@@ -663,20 +656,18 @@
       "review_title": "Bright Floral"
     },
     "latent_preferences": [
-      "prefers neutral colors (black, gray, white), avoids bright prints",
-      "sensitive to itchy fabrics, prefers soft cotton or merino wool",
-      "likes relaxed fit, not tight or clingy",
-      "uses dresses for both workouts and casual wear",
-      "concerned about durability and easy washing"
+      "Enjoys dresses with interesting designs",
+      "Values lightweight and comfortable materials",
+      "Appreciates dresses with pockets for functionality"
     ],
     "generated_questions": [
       "I'm looking for a dress. What would you recommend?",
-      "Which style of dress do you think would suit me best?",
-      "What materials should I consider for comfort and durability?",
-      "Which color would work best with my typical wardrobe?",
-      "What size would be most comfortable for me based on my past reviews?",
-      "Is this dress suitable for the casual occasions I usually wear dresses for?",
-      "How does the fit run on this dress - should I size up for a relaxed fit?"
+      "What style of dress would suit me best?",
+      "Which material would be most comfortable for me?",
+      "How do different dresses with pockets compare in terms of practicality?",
+      "What options do I have for a dress with a unique hemline?",
+      "Should I consider lightweight fabrics for comfort in dresses?",
+      "What care instructions should I be aware of for maintaining a dress's quality?"
     ]
   },
   {
@@ -826,21 +817,17 @@
       "review_title": "Pretty design"
     },
     "latent_preferences": [
-      "prefers neutral colors (black, gray, white), avoids bright prints",
-      "sensitive to itchy fabrics, prefers soft cotton or merino wool",
-      "likes relaxed fit, not tight or clingy",
-      "uses products for both workouts and casual wear",
-      "concerned about durability and easy washing"
+      "appreciation for quality materials",
+      "favoring unique and stylish designs"
     ],
     "generated_questions": [
-      "I'm looking for a product. What would you recommend?",
-      "Which material do you think would be best for me?",
-      "What style would suit me better - fitted or relaxed?",
-      "Which color do you think I should choose?",
-      "What size should I consider based on my past preferences?",
-      "Is this product suitable for how I typically wear my outfits?",
-      "How does the fit run for this product - should I size up or down for my comfort?",
-      "What care instructions should I consider for this type of product?"
+      "What styles of earrings would suit me best?",
+      "Which materials would be most comfortable for my ears?",
+      "How do the dimensions of these earrings compare to what I usually wear?",
+      "What are some unique designs in this type of jewelry that I might like?",
+      "Which options would provide a good balance between elegance and everyday wear?",
+      "What care instructions should I consider for maintaining the quality of these earrings?",
+      "Are there any earrings that are versatile enough for both casual and formal occasions?"
     ]
   },
   {
@@ -1001,21 +988,19 @@
       "review_title": "Nice quality suit"
     },
     "latent_preferences": [
-      "prefers neutral colors (black, gray, white), avoids bright prints",
-      "sensitive to itchy fabrics, prefers soft cotton or merino wool",
-      "likes relaxed fit, not tight or clingy",
-      "uses products for both workouts and casual wear",
-      "concerned about durability and easy washing"
+      "Value for money",
+      "Comfortable and breathable materials",
+      "Attractive design",
+      "Versatile use for different occasions"
     ],
     "generated_questions": [
-      "I'm looking for a product. What would you recommend?",
-      "What style of product do you think would work best for me?",
-      "Which color options might suit my typical preferences?",
-      "What size should I consider based on how I like my products to fit?",
-      "Is there a particular material that you think would be best for my needs?",
-      "How durable is this product? Will it withstand frequent washing?",
-      "Do you think this product would be suitable for both casual and active use?",
-      "Should I consider sizing up or down based on the fit of this product?"
+      "I'm looking for a swimwear option. What would you recommend for me?",
+      "What style of swimwear would suit my needs best?",
+      "Which material would be most comfortable for me in swimwear?",
+      "How do different swimwear designs compare in terms of comfort and fit?",
+      "What care instructions should I consider for maintaining quality in swimwear?",
+      "Which swimwear would be suitable for both casual and more formal beach outings?",
+      "What kind of design or pattern options are available that would appeal to me?"
     ]
   },
   {
@@ -1165,20 +1150,18 @@
       "review_title": "Warm & Waterproof"
     },
     "latent_preferences": [
-      "prefers neutral colors (black, gray, white), avoids bright prints",
-      "sensitive to itchy fabrics, prefers soft materials",
-      "likes relaxed fit, not tight or clingy",
-      "uses shoes for both workouts and casual wear",
-      "concerned about durability and easy washing"
+      "Comfortable materials",
+      "Stylish design",
+      "Quality construction"
     ],
     "generated_questions": [
-      "I'm looking for a comfortable pair of shoes. What would you recommend?",
-      "Which material do you think would be best for my needs?",
-      "What style of shoes do you think suits me best?",
-      "Which color options would work well for me?",
-      "What size should I consider based on my previous purchases?",
-      "Is this type of shoe suitable for both casual and active use?",
-      "How does the fit typically run for these shoes? Should I size up or down?"
+      "I'm looking for some shoes. What would you recommend for comfort?",
+      "What style of shoes would suit me best based on my usual choices?",
+      "Which materials are generally considered most comfortable for shoes like these?",
+      "What should I pay attention to when selecting shoes for my needs?",
+      "How do the designs of these shoes compare in terms of style?",
+      "What qualities should I look for to ensure good quality in shoes?",
+      "Are there particular features in shoes that enhance comfort for daily wear?"
     ]
   },
   {
@@ -1354,20 +1337,20 @@
       "review_title": "Can be worn with any and everything!"
     },
     "latent_preferences": [
-      "prefers neutral colors (black, gray, white), avoids bright prints",
-      "sensitive to itchy fabrics, prefers soft cotton or breathable materials",
-      "likes relaxed fit, not tight or clingy",
-      "uses products for both casual wear and professional settings",
-      "concerned about durability and easy washing"
+      "appreciates stylish yet professional items",
+      "values versatility in wear",
+      "prefers comfortable materials",
+      "looks for practicality in design"
     ],
     "generated_questions": [
-      "I'm looking for a product that can transition from casual to professional. What would you recommend?",
-      "Which material would work best for my sensitivity to itchiness?",
-      "What style of product would suit me better - more structured or relaxed?",
-      "Which color options would align with my preference for neutrals?",
-      "What size should I consider for a comfortable fit based on my past purchases?",
-      "Is this product suitable for my typical use cases, like both work and casual outings?",
-      "How does the fit run for this product – should I size up or down for my comfort?"
+      "I'm looking for a blazer. What would you recommend for me?",
+      "What style of blazer would suit my needs best?",
+      "Which material is most comfortable for a blazer?",
+      "What should I pay attention to when choosing a blazer for my wardrobe?",
+      "Are there blazers that can be worn both casually and in a work setting?",
+      "What features should a good blazer have based on my past purchases?",
+      "How important is the care method for a blazer when considering my usual choices?",
+      "What color options might align with my typical style?"
     ]
   },
   {
@@ -1534,21 +1517,18 @@
       "review_title": "Better Than Expected"
     },
     "latent_preferences": [
-      "prefers neutral colors (black, gray, white), avoids bright prints",
-      "sensitive to itchy fabrics, prefers soft cotton or merino wool",
-      "likes relaxed fit, not tight or clingy",
-      "uses products for both workouts and casual wear",
-      "concerned about durability and easy washing"
+      "Appreciates quality and durability",
+      "Prefers well-constructed items",
+      "Values a good weight in accessories"
     ],
     "generated_questions": [
-      "I'm looking for a product. What would you recommend?",
-      "Which material would work best for me?",
-      "What style would suit me - fitted or relaxed?",
-      "Which color should I choose?",
-      "What size would work for me?",
-      "Is this suitable for how I typically use products?",
-      "How does the fit run - should I size up or down for my preference?",
-      "Are there any products that are easy to care for and durable?"
+      "What kind of weight should I look for in earrings for someone like me?",
+      "Are there particular styles of earrings that are known for their quality?",
+      "What materials would ensure that the earrings last well over time?",
+      "How can I tell if the design of these earrings is practical for everyday wear?",
+      "Which earring styles are best for someone who typically appreciates a good weight in accessories?",
+      "What dimensions should I consider to find the right earrings for my needs?",
+      "What should I look for in the construction of earrings to ensure they hold up well?"
     ]
   },
   {
@@ -1706,21 +1686,19 @@
       "review_title": "Accurate Measurements, Long And Flowing, Works With Jeans Or Leggings"
     },
     "latent_preferences": [
-      "prefers neutral colors (black, gray, white), avoids bright prints",
-      "sensitive to itchy fabrics, prefers soft cotton or merino wool",
-      "likes relaxed fit, not tight or clingy",
-      "uses products for both workouts and casual wear",
-      "concerned about durability and easy washing"
+      "Quality of materials",
+      "Style versatility",
+      "Comfort in fit",
+      "Accurate sizing"
     ],
     "generated_questions": [
-      "I'm looking for a product. What would you recommend?",
-      "What style of product do you think would suit me best?",
-      "Which color should I consider for my next product?",
-      "What material would be most comfortable for me?",
-      "What size do you think I should choose for a good fit?",
-      "Is this product suitable for both casual wear and workouts?",
-      "How do the sizes run – should I be thinking about sizing up or down?",
-      "What care instructions should I expect for this product?"
+      "What styles of tops would work well for my casual outings?",
+      "Which materials are known for their comfort in casual tops?",
+      "What should I look for to ensure the top I choose fits well?",
+      "Are there options that offer a relaxed fit that would suit me?",
+      "How do the different colors available enhance the overall style of a top?",
+      "What care instructions should I consider to maintain the quality of a casual top?",
+      "Which brands are known for their quality in casual tunics?"
     ]
   }
 ]
