@@ -22,17 +22,28 @@ VSTORE_DIR = BASE_DIR / "vectorstore"
 CATALOG_DIR = VSTORE_DIR / "catalog"
 USERS_DIR   = VSTORE_DIR / "users"
 
-DATASET_CATEGORY = "Clothing_Shoes_and_Jewelry"  # Change as needed
+# Dataset category - configurable via set_dataset_category()
+_DATASET_CATEGORY = "Clothing_Shoes_and_Jewelry"  # Default value
+
+def set_dataset_category(category: str):
+    """Set the current dataset category."""
+    global _DATASET_CATEGORY
+    _DATASET_CATEGORY = category
+    print(f"[ragFunctions] Dataset category set to: {category}")
+
+def get_dataset_category() -> str:
+    """Get the current dataset category."""
+    return _DATASET_CATEGORY
 
 for p in [VSTORE_DIR, CATALOG_DIR, USERS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
 def item_index_dir() -> Path:
-    return CATALOG_DIR / DATASET_CATEGORY / "item_index_qwen3"
+    return CATALOG_DIR / get_dataset_category() / "item_index_qwen3"
 
 def user_review_embeddings_dir() -> Path:
     """Get directory for user review embeddings."""
-    return CATALOG_DIR / DATASET_CATEGORY / "user_review_embeddings"
+    return CATALOG_DIR / get_dataset_category() / "user_review_embeddings"
 
 def _now() -> str:
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
@@ -430,7 +441,7 @@ def save_chat_history(chat_history: str, user_name: str) -> bool:
                 "round_number": round_number,
                 "timestamp": timestamp,
                 "user_query": user_query,
-                "dataset_category": DATASET_CATEGORY,
+                "dataset_category": get_dataset_category(),
                 "conversation": [
                     {
                         "agent": agent_name,
@@ -815,7 +826,7 @@ def _load_user_profile_embedding(user_name: str) -> Optional[np.ndarray]:
     uidx = _Index(uidx_dir)
 
     if not uidx.exists():
-        build_user_index_for(user_name, DATASET_CATEGORY)
+        build_user_index_for(user_name, get_dataset_category())
 
     uidx.load()
 
@@ -905,7 +916,7 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, top_k: int =
                         f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
     return {
-        "dataset_category": DATASET_CATEGORY,
+        "dataset_category": get_dataset_category(),
         "recommendations": recs,
         "relevant_user_reviews": selected_reviews,
         "review_selection_method": "dynamic_similarity",
