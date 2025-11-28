@@ -301,9 +301,9 @@ def run_single_category(json_path, reply_prompt_version, category):
 
         # Export dialogues for evaluation
         eval_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        eval_dir = Path(f"./{category}_dial")
+        eval_dir = Path(f"./dialogues_output/{category}")
         eval_dir.mkdir(parents=True, exist_ok=True)
-        eval_output_path = eval_dir / f"eval_dialogues_{user}_{reply_prompt_version}_{eval_timestamp}.json"
+        eval_output_path = eval_dir / f"text_rag_dialogues_{user}_{reply_prompt_version}_{eval_timestamp}.json"
         export_dialogues_for_eval(user, output_path=str(eval_output_path))
 
     return results
@@ -395,7 +395,6 @@ def main():
             print(f"  - {extract_category(qf)}: {qf}")
         print()
 
-        all_results = {}
         for qf in question_files:
             category = extract_category(qf)
             print(f"\n{'#'*80}")
@@ -404,21 +403,14 @@ def main():
             print(f"{'#'*80}\n")
 
             try:
-                results = run_single_category(qf, reply_prompt_version, category)
-                all_results[category] = results
+                run_single_category(qf, reply_prompt_version, category)
             except Exception as e:
                 print(f"Error processing category {category}: {e}")
                 continue
 
-        # Save combined output
-        output_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_path = f"shopping_text_rag_agent_all_categories_{reply_prompt_version}_{output_ts}.json"
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(all_results, f, ensure_ascii=False, indent=2)
-
         print(f"\n{'='*80}")
         print(f"All Categories Completed")
-        print(f"Combined output saved to: {out_path}")
+        print(f"Output saved to: ./dialogues_output/{{category}}/")
         print(f"Log saved to: {log_file}")
         print(f"{'='*80}\n")
 
@@ -443,17 +435,11 @@ def main():
         print(f"Question file: {json_path}")
         print()
 
-        results = run_single_category(json_path, reply_prompt_version, category)
-
-        # Save output
-        output_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_path = f"shopping_text_rag_agent_{category}_{reply_prompt_version}_{output_ts}.json"
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(results, f, ensure_ascii=False, indent=2)
+        run_single_category(json_path, reply_prompt_version, category)
 
         print(f"\n{'='*80}")
         print(f"Agent Workflow Execution Completed")
-        print(f"Output saved to: {out_path}")
+        print(f"Output saved to: ./dialogues_output/{category}/")
         print(f"Log saved to: {log_file}")
         print(f"{'='*80}\n")
 
