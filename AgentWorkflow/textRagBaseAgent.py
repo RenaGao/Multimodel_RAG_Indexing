@@ -382,7 +382,7 @@ def main():
     reply_prompt_version = args.reply_prompt_version
 
     load_dotenv()
-    assert os.getenv("QWEN_API_KEY"), "Missing QWEN_API_KEY in .env"
+    assert os.getenv("OPENROUTER_API_KEY"), "Missing QWEN_API_KEY in .env"
 
     # Clear user storage at script start to avoid cross-category conflicts
     clear_user_storage()
@@ -411,7 +411,7 @@ def main():
         response = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers={
-                "Authorization": f"Bearer {os.getenv('QWEN_API_KEY')}",
+                "Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}",
                 "Content-Type": "application/json"
             },
             json={
