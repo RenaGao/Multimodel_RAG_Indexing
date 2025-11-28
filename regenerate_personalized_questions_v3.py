@@ -595,7 +595,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--profiles-dir",
         type=str,
-        default="user_profiles",
+        default="./user_profiles",
         help="Directory containing user profile files (default: user_profiles)"
     )
 
