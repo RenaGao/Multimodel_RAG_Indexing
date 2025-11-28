@@ -30,7 +30,6 @@ def main():
     assert os.getenv("QWEN_API_KEY"), "Missing QWEN_API_KEY in .env"
 
     # question json file path
-    # TODO: need this format of question list
     json_path = "../questions/Amazon_Fashion_questions_v2_20251121_222830.json"
 
     all_questions_dict = load_all_questions(json_path)

@@ -100,6 +100,31 @@ def load_json(file_path):
     with open(file_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+def get_all_question_files(questions_dir="questions"):
+    """Get all questions files from directory."""
+    files = []
+    if os.path.exists(questions_dir):
+        for f in os.listdir(questions_dir):
+            if f.endswith(".json") and "_questions_" in f:
+                files.append(os.path.join(questions_dir, f))
+    return sorted(files)
+
+def extract_category(filename):
+    """Extract category name from filename."""
+    # Amazon_Fashion_questions_20251110_214618.json -> Amazon_Fashion
+    basename = os.path.basename(filename)
+    return basename.split("_questions_")[0]
+
+def get_completed_categories(output_dir="user_profiles"):
+    """Get set of already completed categories."""
+    completed = set()
+    if os.path.exists(output_dir):
+        for f in os.listdir(output_dir):
+            if f.endswith("_user_profiles.json"):
+                category = f.replace("_user_profiles.json", "")
+                completed.add(category)
+    return completed
+
 def extract_reviews_for_user(user_id, target_asin, user_data):
     """
     Extract all reviews for a user from user_data.json,
@@ -303,6 +328,52 @@ def batch_generate_profiles(questions_path, user_data_path, output_path, verbose
         print(f"\n📋 Sample profile ({sample_user}):")
         print(json.dumps(user_profiles[sample_user], indent=2))
 
+def batch_all_categories(questions_dir, user_data_dir, output_dir, verbose=False):
+    """
+    Process all categories from questions directory.
+
+    Args:
+        questions_dir: Directory containing questions files
+        user_data_dir: Directory containing user data files
+        output_dir: Output directory for user profiles
+        verbose: Print detailed progress
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    question_files = get_all_question_files(questions_dir)
+    if not question_files:
+        print(f"No questions files found in {questions_dir}")
+        return
+
+    completed = get_completed_categories(output_dir)
+    print(f"Found {len(question_files)} categories, {len(completed)} already completed")
+
+    for qf in question_files:
+        category = extract_category(qf)
+
+        if category in completed:
+            print(f"Skipping {category} (already completed)")
+            continue
+
+        user_data_path = os.path.join(user_data_dir, f"{category}_top_100_user_data.json")
+        output_path = os.path.join(output_dir, f"{category}_user_profiles.json")
+
+        if not os.path.exists(user_data_path):
+            print(f"Skipping {category}: user data not found at {user_data_path}")
+            continue
+
+        print(f"\n{'='*60}")
+        print(f"Processing: {category}")
+        print(f"{'='*60}")
+
+        try:
+            batch_generate_profiles(qf, user_data_path, output_path, verbose)
+        except Exception as e:
+            print(f"Error processing {category}: {e}")
+            continue
+
+    print(f"\nAll categories processed!")
+
 # -----------------------------------
 # Main
 # -----------------------------------
@@ -311,22 +382,45 @@ if __name__ == "__main__":
         description="Generate user profiles from review history using LLM"
     )
     parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Process all categories from questions directory"
+    )
+    parser.add_argument(
         "--questions",
         type=str,
-        default="/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Multimodel_RAG_Indexing/questions_v2/Clothing_Shoes_and_Jewelry_questions_20251127_235753.json",
-        help="Path to questions JSON file (e.g., Amazon_Fashion_questions_20251121_222830.json)"
+        default=None,
+        help="Path to questions JSON file (for single category mode)"
     )
     parser.add_argument(
         "--user-data",
         type=str,
-        default="/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center/Clothing_Shoes_and_Jewelry_top_100_user_data.json",
-        help="Path to user data JSON file (e.g., Amazon_Fashion_top_100_user_data.json)"
+        default=None,
+        help="Path to user data JSON file (for single category mode)"
     )
     parser.add_argument(
         "--output",
         type=str,
-        default="Clothing_Shoes_and_Jewelry_user_profiles.json",
-        help="Output path for generated profiles (default: user_profiles.json)"
+        default=None,
+        help="Output path for generated profiles (for single category mode)"
+    )
+    parser.add_argument(
+        "--questions-dir",
+        type=str,
+        default="./questions",
+        help="Directory containing questions files (for --all mode)"
+    )
+    parser.add_argument(
+        "--user-data-dir",
+        type=str,
+        default="/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Processed/user_center",
+        help="Directory containing user data files (for --all mode)"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="user_profiles",
+        help="Output directory for user profiles (for --all mode)"
     )
     parser.add_argument(
         "--verbose",
@@ -336,9 +430,19 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    batch_generate_profiles(
-        questions_path=args.questions,
-        user_data_path=args.user_data,
-        output_path=args.output,
-        verbose=args.verbose
-    )
+    if args.all:
+        batch_all_categories(
+            questions_dir=args.questions_dir,
+            user_data_dir=args.user_data_dir,
+            output_dir=args.output_dir,
+            verbose=args.verbose
+        )
+    else:
+        if not args.questions or not args.user_data or not args.output:
+            parser.error("Single category mode requires --questions, --user-data, and --output")
+        batch_generate_profiles(
+            questions_path=args.questions,
+            user_data_path=args.user_data,
+            output_path=args.output,
+            verbose=args.verbose
+        )

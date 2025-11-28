@@ -39,6 +39,8 @@ def load_existing_questions(file_path):
 # -------------------------------------
 # 2. Build new prompt (v2) - Decision Point Approach
 # -------------------------------------
+# TODO: 应该让问题多聚焦在个性化上，少问一些通用的产品属性
+# TODO: 不要用sample的五个review，而是用生成的user_profile
 def build_v2_prompt(user_history, target_product):
     """
     Build the v2 prompt using decision-point approach.

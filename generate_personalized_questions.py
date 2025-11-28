@@ -9,7 +9,6 @@ import glob
 # -------------------------------------
 # 0. Initialize OpenAI client
 # -------------------------------------
-# TODO: Replace with your actual OpenAI API key
 OPENAI_API_KEY = ""
 
 client = OpenAI(api_key=OPENAI_API_KEY)

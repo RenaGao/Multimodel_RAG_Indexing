@@ -8,7 +8,6 @@ from pathlib import Path
 import json
 from ragFunctions import save_chat_history, rag_search_include_image_for_recommend_agent, rag_search_for_dialogue_history_agent, rag_search_for_reason_agent
 
-# TODO: can be changed based on Rag need
 def make_save_hook(agent_name: str):
     """Save the latest inbound event for this agent before it replies."""
     def _hook(recipient, messages, sender, config):
@@ -91,14 +90,12 @@ def main():
     load_dotenv()
     assert os.getenv("QWEN_API_KEY"), "Missing QWEN_API_KEY in .env"
 
-    # TODO: need this format of question list
     json_path = "temp_user_based_question_list.json"
 
     all_questions_dict = load_all_questions(json_path)
 
     all_users_list = load_all_users(json_path)
 
-    # TODO: selected_users = all_users_list, select first 2 users for now
     selected_users = all_users_list[:2]
     
     # how many questions can run for one category
