@@ -340,7 +340,7 @@ def run_single_category(json_path, category, target_user=None):
             groupchat = GroupChat(
                 agents=[user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent, reply_agent],
                 messages=[],
-                max_round=10,
+                max_round=25,
                 speaker_selection_method=make_simple_flow(user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent, reply_agent)
             )
 
