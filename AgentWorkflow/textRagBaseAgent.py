@@ -86,6 +86,11 @@ def is_category_completed(questions_path, category):
     completed = get_completed_users(category)
     return users.issubset(completed)
 
+# Retry mechanism for agents that must call tools
+_agent_retry_counts = {}  # {agent_name: retry_count}
+MAX_TOOL_CALL_RETRIES = 3
+
+
 def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
     """
     Flow:
@@ -95,6 +100,9 @@ def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
            -> Reply           (generates final user response)
            -> End
     """
+    # Agents that MUST call a tool in their first response
+    tool_required_agents = {dh_agent, rec_agent, reply_agent}
+
     def _last(gc):
         return (gc.messages or [None])[-1] or {}
 
@@ -111,7 +119,23 @@ def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
             return user_agent
 
         if _has_tool_calls(last) or _is_tool_return(last):
+            # Tool call made or tool returned - reset retry counter and continue
+            if last_speaker and last_speaker in tool_required_agents:
+                _agent_retry_counts[last_speaker.name] = 0
             return last_speaker
+
+        # Check if a tool-required agent failed to call its tool
+        if last_speaker in tool_required_agents:
+            agent_name = last_speaker.name
+            current_retries = _agent_retry_counts.get(agent_name, 0)
+
+            if current_retries < MAX_TOOL_CALL_RETRIES:
+                _agent_retry_counts[agent_name] = current_retries + 1
+                print(f"[RETRY] {agent_name} didn't call tool, retry {current_retries + 1}/{MAX_TOOL_CALL_RETRIES}")
+                return last_speaker  # Force retry
+            else:
+                print(f"[WARNING] {agent_name} failed to call tool after {MAX_TOOL_CALL_RETRIES} retries, continuing...")
+                _agent_retry_counts[agent_name] = 0  # Reset counter
 
         if last_speaker is user_agent:
             return dh_agent
@@ -175,7 +199,7 @@ def run_single_category(json_path, category, target_user=None):
             "base_url": "https://openrouter.ai/api/v1",
             "price": [0.001, 0.002],
             "timeout": 120,
-            "temperature": 0.1,
+            "temperature": 0.3,
         }],
         "timeout": 120,
         "cache_seed": None,

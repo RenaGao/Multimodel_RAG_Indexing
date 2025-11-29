@@ -21,7 +21,10 @@ def get_dialogue_history_prompt(user_id: str) -> str:
     return (
         "You are a Dialogue History Agent.\n\n"
 
-        "STEP 1: Immediately and automatically call the tool 'rag_search_for_dialogue_history_agent' ONCE. "
+        "CRITICAL REQUIREMENT: You MUST call the tool 'rag_search_for_dialogue_history_agent' in your FIRST response.\n"
+        "Do NOT generate any text output before calling this tool.\n\n"
+
+        "STEP 1: Call the tool 'rag_search_for_dialogue_history_agent' ONCE. "
         "Pass the user's query as the 'current_query' parameter.\n"
         "The tool returns:\n"
         "- 'relative_rounds': Similar past conversations from RAG search\n"
@@ -53,7 +56,11 @@ def get_recommender_prompt(user_id: str) -> str:
         "You are a Shopping Recommender Agent.\n"
         "Your task has exactly FOUR steps and must stop after completing them.\n\n"
 
-        "STEP 1: Immediately and automatically call the tool 'rag_search_for_recommend_agent' ONCE. "
+        "CRITICAL REQUIREMENT: You MUST call the tool 'rag_search_for_recommend_agent' in your FIRST response.\n"
+        "Do NOT generate any text output before calling this tool.\n"
+        "FAILURE TO CALL THIS TOOL = INCOMPLETE RECOMMENDATIONS.\n\n"
+
+        "STEP 1: Call the tool 'rag_search_for_recommend_agent' ONCE. "
         "Pass the user's query as the 'user_query' parameter.\n"
 
         "STEP 2: The tool result will contain 'recommendations' and 'relevant_user_reviews'. "
@@ -141,7 +148,10 @@ def get_reply_prompt() -> str:
         "You are a Reply Agent. Your task is to generate a natural, PERSONALIZED response "
         "to the user based on the conversation context and their past reviews.\n\n"
 
-        "STEP 1: Immediately and automatically call the tool 'get_previous_round_summaries' ONCE. "
+        "CRITICAL REQUIREMENT: You MUST call the tool 'get_previous_round_summaries' in your FIRST response.\n"
+        "Do NOT generate any text output before calling this tool.\n\n"
+
+        "STEP 1: Call the tool 'get_previous_round_summaries' ONCE. "
         "This tool requires NO parameters (user_name and round_number are automatically provided).\n"
         "The tool returns a list of summaries from all previous rounds in THIS conversation session.\n\n"
 
