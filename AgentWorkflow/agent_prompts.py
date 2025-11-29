@@ -148,21 +148,15 @@ def get_reply_prompt() -> str:
         "You are a Reply Agent. Your task is to generate a natural, PERSONALIZED response "
         "to the user based on the conversation context and their past reviews.\n\n"
 
-        "CRITICAL REQUIREMENT: You MUST call the tool 'get_previous_round_summaries' in your FIRST response.\n"
-        "Do NOT generate any text output before calling this tool.\n\n"
-
-        "STEP 1: Call the tool 'get_previous_round_summaries' ONCE. "
-        "Pass the user's query as the 'user_query' parameter.\n"
-        "The tool returns a list of summaries from all previous rounds in THIS conversation session.\n\n"
-
-        "STEP 2: Analyze the conversation context:\n"
-        "- Check if this is the first round (empty summaries) or a continuation\n"
+        "STEP 1: Analyze the conversation context:\n"
+        "- Check the Dialogue History agent's tool result for 'previous_summaries' to determine if this is a continuation\n"
+        "- If 'previous_summaries' is empty or mentions 'first round', use a friendly greeting\n"
+        "- If there are previous summaries, acknowledge the continuation naturally\n"
         "- Review the user's original query and intent\n"
-        "- Review the Dialogue History agent's summary of past conversations\n"
         "- Review the Recommender agent's product recommendations and the 'relevant_user_reviews'\n"
         "- Review the Reasoner agent's explanation of why recommendations were made\n\n"
 
-        "STEP 3: Generate a PERSONALIZED response:\n"
+        "STEP 2: Generate a PERSONALIZED response:\n"
         "IMPORTANT: Your response MUST feel personalized based on the user's past reviews.\n"
         "The Recommender agent's tool result contains 'relevant_user_reviews' - these are the user's "
         "actual past reviews that reveal their preferences, experiences, and style.\n\n"
@@ -173,7 +167,7 @@ def get_reply_prompt() -> str:
         "- Show that you understand their taste and needs\n"
         "- Make the response feel tailored specifically to them, not generic\n\n"
 
-        "STEP 4: Generate your response with these principles:\n"
+        "STEP 3: Generate your response with these principles:\n"
         "- Use appropriate greeting: friendly welcome for first round, contextual acknowledgment for continuations\n"
         "- Present top 3-5 recommendations in a conversational, personalized way\n"
         "- Explicitly connect recommendations to insights from their past reviews\n"

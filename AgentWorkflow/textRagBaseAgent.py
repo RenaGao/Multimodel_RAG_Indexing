@@ -102,7 +102,8 @@ def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
            -> End
     """
     # Agents that MUST call a tool in their first response
-    tool_required_agents = {dh_agent, rec_agent, reply_agent}
+    # Reply agent no longer needs tool - it analyzes Dialogue History agent's output directly
+    tool_required_agents = {dh_agent, rec_agent}
 
     def _last(gc):
         return (gc.messages or [None])[-1] or {}
@@ -247,40 +248,8 @@ def run_single_category(json_path, category, target_user=None):
             system_message=get_reply_prompt(),
         )
 
-        # Create wrapper that captures user_id for reply_agent
-        def make_reply_tool_wrapper(user_id: str):
-            def wrapper(user_query: str):  # Meaningful parameter like other agents
-                current_round = get_current_round_number(user_id)
-                summaries = load_previous_round_summaries(user_id, current_round)
-                if not summaries:
-                    return {
-                        "user_name": user_id,
-                        "current_round": current_round,
-                        "previous_summaries": [],
-                        "message": "This is the first round. No previous conversation history exists."
-                    }
-                return {
-                    "user_name": user_id,
-                    "current_round": current_round,
-                    "previous_summaries": summaries,
-                    "message": f"Found {len(summaries)} previous round(s) of conversation."
-                }
-            return wrapper
-
-        reply_wrapper = make_reply_tool_wrapper(user)
-
-        reply_agent.register_for_llm(
-            name="get_previous_round_summaries",
-            description=(
-                "Retrieve summaries of all previous rounds in this conversation session. "
-                "Use this to determine if this is a continuation and to understand the conversation context. "
-                "Pass the user's query as the 'user_query' parameter."
-            ),
-        )(reply_wrapper)
-
-        reply_agent.register_for_execution(
-            name="get_previous_round_summaries"
-        )(reply_wrapper)
+        # Reply agent no longer needs tool registration
+        # It analyzes Dialogue History agent's output directly for conversation context
 
         user_proxy_agent = UserProxyAgent(
             name=f"User_{user}_proxy_agent",
