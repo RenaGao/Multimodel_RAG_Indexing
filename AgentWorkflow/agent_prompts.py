@@ -158,7 +158,8 @@ def get_reply_prompt() -> str:
         "- Look for '[Round X]' at the START of the Dialogue History agent's summary\n"
         "- If '[Round 1]': This is the FIRST round - use a friendly greeting like 'Hi there!' or 'Hey!'\n"
         "- If '[Round 2]' or higher: This is a CONTINUATION - do NOT use generic greetings like 'Hi there!'\n"
-        "  Instead, acknowledge naturally like 'Following up on your question...' or 'Based on what we discussed...'\n\n"
+        "  Instead, acknowledge naturally like 'Following up on your question...' or 'Based on what we discussed...'\n"
+        "- IMPORTANT: Do NOT include '[Round X]' in YOUR response - it's only for determining greeting style\n\n"
 
         "STEP 2: Review the conversation context:\n"
         "- Review the user's original query and intent\n"
