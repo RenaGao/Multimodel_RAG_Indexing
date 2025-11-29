@@ -88,6 +88,7 @@ def is_category_completed(questions_path, category):
 
 # Retry mechanism for agents that must call tools
 _agent_retry_counts = {}  # {agent_name: retry_count}
+_agent_tool_called = set()  # Track agents that have successfully called their tool
 MAX_TOOL_CALL_RETRIES = 3
 
 
@@ -118,24 +119,36 @@ def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
         if last_speaker is None and not groupchat.messages:
             return user_agent
 
-        if _has_tool_calls(last) or _is_tool_return(last):
-            # Tool call made or tool returned - reset retry counter and continue
+        # When tool returns, mark this agent as having successfully called its tool
+        if _is_tool_return(last):
             if last_speaker and last_speaker in tool_required_agents:
-                _agent_retry_counts[last_speaker.name] = 0
+                _agent_tool_called.add(last_speaker.name)
             return last_speaker
 
-        # Check if a tool-required agent failed to call its tool
+        # When agent makes a tool call, continue to execute it
+        if _has_tool_calls(last):
+            return last_speaker
+
+        # Check if a tool-required agent needs to retry
         if last_speaker in tool_required_agents:
             agent_name = last_speaker.name
-            current_retries = _agent_retry_counts.get(agent_name, 0)
 
-            if current_retries < MAX_TOOL_CALL_RETRIES:
-                _agent_retry_counts[agent_name] = current_retries + 1
-                print(f"[RETRY] {agent_name} didn't call tool, retry {current_retries + 1}/{MAX_TOOL_CALL_RETRIES}")
-                return last_speaker  # Force retry
+            # If agent already successfully called its tool, continue normal flow
+            if agent_name in _agent_tool_called:
+                _agent_tool_called.discard(agent_name)  # Clear for next round
+                _agent_retry_counts[agent_name] = 0
+                # Fall through to normal flow below
             else:
-                print(f"[WARNING] {agent_name} failed to call tool after {MAX_TOOL_CALL_RETRIES} retries, continuing...")
-                _agent_retry_counts[agent_name] = 0  # Reset counter
+                # Agent didn't call tool, check if we should retry
+                current_retries = _agent_retry_counts.get(agent_name, 0)
+
+                if current_retries < MAX_TOOL_CALL_RETRIES:
+                    _agent_retry_counts[agent_name] = current_retries + 1
+                    print(f"[RETRY] {agent_name} didn't call tool, retry {current_retries + 1}/{MAX_TOOL_CALL_RETRIES}")
+                    return last_speaker  # Force retry
+                else:
+                    print(f"[WARNING] {agent_name} failed to call tool after {MAX_TOOL_CALL_RETRIES} retries, continuing...")
+                    _agent_retry_counts[agent_name] = 0  # Reset counter
 
         if last_speaker is user_agent:
             return dh_agent
