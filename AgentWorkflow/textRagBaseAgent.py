@@ -45,6 +45,14 @@ def extract_category(filename):
     basename = os.path.basename(filename)
     return basename.split("_questions_")[0]
 
+def find_category_file(category_name, questions_dir="../questions_v3"):
+    """Find question file for a specific category."""
+    question_files = get_all_question_files(questions_dir)
+    for qf in question_files:
+        if extract_category(qf) == category_name:
+            return qf
+    return None
+
 def get_completed_users(category):
     """Get set of user IDs that have completed output files."""
     output_dir = Path(f"./dialogues_output/{category}")
@@ -125,7 +133,7 @@ def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
 
     return select_next
 
-def run_single_category(json_path, reply_prompt_version, category):
+def run_single_category(json_path, reply_prompt_version, category, target_user=None):
     """Run agent workflow for a single category."""
     # Set the dataset category for ragFunctions
     set_dataset_category(category)
@@ -133,9 +141,17 @@ def run_single_category(json_path, reply_prompt_version, category):
     all_questions_dict = load_all_questions(json_path)
     all_users_list = load_all_users(json_path)
 
-    # Filter out completed users for resume capability
-    completed_users = get_completed_users(category)
-    selected_users = [u for u in all_users_list if u not in completed_users]
+    if target_user:
+        # Only process the specified user
+        if target_user not in all_users_list:
+            print(f"User '{target_user}' not found in {json_path}")
+            return {}
+        selected_users = [target_user]
+        completed_users = set()
+    else:
+        # Filter out completed users for resume capability
+        completed_users = get_completed_users(category)
+        selected_users = [u for u in all_users_list if u not in completed_users]
 
     # how many questions can run for one category
     per_user_limit = None  # run all questions in the category
@@ -384,6 +400,18 @@ def main():
         default=None,
         help="Path to a specific questions JSON file (for single category mode)"
     )
+    parser.add_argument(
+        "--category",
+        type=str,
+        default=None,
+        help="Process a specific category by name (e.g., 'Appliances')"
+    )
+    parser.add_argument(
+        "--user-id",
+        type=str,
+        default=None,
+        help="Process a specific user ID (requires --category)"
+    )
     args = parser.parse_args()
     reply_prompt_version = args.reply_prompt_version
 
@@ -469,6 +497,28 @@ def main():
         print(f"\n{'='*80}")
         print(f"All Categories Completed")
         print(f"Output saved to: ./dialogues_output/{{category}}/")
+        print(f"Log saved to: {log_file}")
+        print(f"{'='*80}\n")
+
+    elif args.category:
+        # Category mode: find and process specific category
+        qf = find_category_file(args.category, args.questions_dir)
+        if not qf:
+            print(f"Category '{args.category}' not found in {args.questions_dir}")
+            sys.exit(1)
+
+        category = args.category
+        print(f"Category mode: {category}")
+        print(f"Question file: {qf}")
+        if args.user_id:
+            print(f"Target user: {args.user_id}")
+        print()
+
+        run_single_category(qf, reply_prompt_version, category, target_user=args.user_id)
+
+        print(f"\n{'='*80}")
+        print(f"Category Completed: {category}")
+        print(f"Output saved to: ./dialogues_output/{category}/")
         print(f"Log saved to: {log_file}")
         print(f"{'='*80}\n")
 
