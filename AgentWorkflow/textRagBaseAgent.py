@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 import autogen
 from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
 import os
+import shutil
 from helpFunctions import load_all_questions, load_all_users, export_dialogues_for_eval
 from datetime import datetime
 from pathlib import Path
@@ -9,7 +10,7 @@ import json
 import sys
 import argparse
 import re
-from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, append_agent_message, save_round_summary, load_previous_round_summaries, get_current_round_number, set_dataset_category, clear_user_storage
+from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, append_agent_message, save_round_summary, load_previous_round_summaries, get_current_round_number, set_dataset_category, clear_user_storage, _user_paths
 from agent_prompts import get_dialogue_history_prompt, get_recommender_prompt, get_reasoner_prompt, get_reply_prompt
 
 # Custom logger class to capture all print outputs
@@ -60,24 +61,22 @@ def get_completed_users(category):
         return set()
 
     completed = set()
-    # Files are named: text_rag_dialogues_{user_id}_{version}_{date}_{time}.json
+    # Files are named: text_rag_dialogues_{user_id}_{date}_{time}.json
+    # Example: text_rag_dialogues_ABC123_XYZ_20251129_123456.json
     for f in output_dir.glob("text_rag_dialogues_*.json"):
         stem = f.stem  # Remove .json
         parts = stem.split("_")
 
-        # Find index of 'dialogues' and version (v1, v2, v3, ...)
+        # Find index of 'dialogues'
         dialogues_idx = parts.index("dialogues") if "dialogues" in parts else -1
 
-        version_idx = -1
-        for i, p in enumerate(parts):
-            if re.match(r'^v\d+$', p):  # Match v1, v2, v3, etc.
-                version_idx = i
-                break
-
-        # Extract user_id between 'dialogues' and version
-        if dialogues_idx >= 0 and version_idx > dialogues_idx + 1:
-            user_id = "_".join(parts[dialogues_idx + 1 : version_idx])
-            completed.add(user_id)
+        # Find timestamp parts (last two: date YYYYMMDD and time HHMMSS)
+        # The timestamp format is %Y%m%d_%H%M%S, so last two parts
+        if dialogues_idx >= 0 and len(parts) >= dialogues_idx + 4:
+            # user_id is between 'dialogues' and the timestamp (last 2 parts)
+            user_id = "_".join(parts[dialogues_idx + 1 : -2])
+            if user_id:
+                completed.add(user_id)
 
     return completed
 
@@ -133,7 +132,7 @@ def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
 
     return select_next
 
-def run_single_category(json_path, reply_prompt_version, category, target_user=None):
+def run_single_category(json_path, category, target_user=None):
     """Run agent workflow for a single category."""
     # Set the dataset category for ragFunctions
     set_dataset_category(category)
@@ -161,7 +160,6 @@ def run_single_category(json_path, reply_prompt_version, category, target_user=N
 
     print(f"Configuration:")
     print(f"  Category: {category}")
-    print(f"  Reply Prompt Version: {reply_prompt_version}")
     print(f"  Total users: {len(all_users_list)}")
     print(f"  Completed users: {len(completed_users)}")
     print(f"  Remaining users: {len(selected_users)}")
@@ -177,6 +175,7 @@ def run_single_category(json_path, reply_prompt_version, category, target_user=N
             "base_url": "https://openrouter.ai/api/v1",
             "price": [0.001, 0.002],
             "timeout": 120,
+            "temperature": 0.1,
         }],
         "timeout": 120,
         "cache_seed": None,
@@ -208,7 +207,7 @@ def run_single_category(json_path, reply_prompt_version, category, target_user=N
         reply_agent = AssistantAgent(
             name=f"Reply_{user}_agent",
             llm_config=llm_config,
-            system_message=get_reply_prompt(version=reply_prompt_version),
+            system_message=get_reply_prompt(),
         )
 
         # Create wrapper that captures user_id for reply_agent
@@ -359,7 +358,7 @@ def run_single_category(json_path, reply_prompt_version, category, target_user=N
         eval_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         eval_dir = Path(f"./dialogues_output/{category}")
         eval_dir.mkdir(parents=True, exist_ok=True)
-        eval_output_path = eval_dir / f"text_rag_dialogues_{user}_{reply_prompt_version}_{eval_timestamp}.json"
+        eval_output_path = eval_dir / f"text_rag_dialogues_{user}_{eval_timestamp}.json"
 
         # Check if export succeeded
         export_result = export_dialogues_for_eval(user, output_path=str(eval_output_path))
@@ -367,6 +366,14 @@ def run_single_category(json_path, reply_prompt_version, category, target_user=N
             print(f"[WARNING] Failed to export dialogues for user {user}")
         else:
             print(f"[SUCCESS] Exported dialogues to: {export_result}")
+
+        # Backup chat_history.jsonl before clearing
+        up = _user_paths(user)
+        if up["chat_history"].exists():
+            backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = eval_dir / f"{category}_{user}_{backup_timestamp}.jsonl"
+            shutil.copy2(up["chat_history"], backup_path)
+            print(f"[BACKUP] Chat history saved to: {backup_path}")
 
         # Clear user storage after each user completes
         clear_user_storage()
@@ -376,13 +383,6 @@ def run_single_category(json_path, reply_prompt_version, category, target_user=N
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Text RAG Base Agent for Shopping Recommendations")
-    parser.add_argument(
-        "--reply-prompt-version",
-        type=str,
-        default="v2",
-        choices=["v1", "v2"],
-        help="Version of reply agent prompt to use (default: v1, v2: adaptive/flexible)"
-    )
     parser.add_argument(
         "--all",
         action="store_true",
@@ -413,7 +413,6 @@ def main():
         help="Process a specific user ID (requires --category)"
     )
     args = parser.parse_args()
-    reply_prompt_version = args.reply_prompt_version
 
     load_dotenv()
     assert os.getenv("OPENROUTER_API_KEY"), "Missing QWEN_API_KEY in .env"
@@ -489,7 +488,7 @@ def main():
             print(f"{'#'*80}\n")
 
             try:
-                run_single_category(qf, reply_prompt_version, category)
+                run_single_category(qf, category)
             except Exception as e:
                 print(f"Error processing category {category}: {e}")
                 continue
@@ -514,7 +513,7 @@ def main():
             print(f"Target user: {args.user_id}")
         print()
 
-        run_single_category(qf, reply_prompt_version, category, target_user=args.user_id)
+        run_single_category(qf, category, target_user=args.user_id)
 
         print(f"\n{'='*80}")
         print(f"Category Completed: {category}")
@@ -543,7 +542,7 @@ def main():
         print(f"Question file: {json_path}")
         print()
 
-        run_single_category(json_path, reply_prompt_version, category)
+        run_single_category(json_path, category)
 
         print(f"\n{'='*80}")
         print(f"Agent Workflow Execution Completed")

@@ -92,7 +92,8 @@ def get_reasoner_prompt(user_id: str) -> str:
     """
     return (
         "You are a Reasoning Agent. "
-        "Your task is to explain WHY the product recommendations were generated.\n"
+        "Your task is to explain WHY the product recommendations were generated, "
+        "with special emphasis on how the user's PAST REVIEWS influenced the recommendations.\n\n"
 
         "You are provided with the FULL message history of the groupchat, "
         "which may contain many previous rounds.\n\n"
@@ -105,12 +106,20 @@ def get_reasoner_prompt(user_id: str) -> str:
         "- user_query:   from the first User_*_proxy_agent message after the boundary\n"
         "- dialogue_tool_result:    from the tool message of Dialogue_History_*_agent\n"
         f"- dialogue_summary:         from the assistant output of Dialogue_History_{user_id}_agent\n"
-        "- recommendation_tool_result:   from the tool message of Recommender_*_agent\n"
+        "- recommendation_tool_result:   from the tool message of Recommender_*_agent (contains 'relevant_user_reviews')\n"
         f"- final_recommendation:         from the assistant output of Recommender_{user_id}_agent\n\n"
+
+        "PERSONALIZATION FOCUS:\n"
+        "Pay special attention to the 'relevant_user_reviews' in the recommendation_tool_result. "
+        "These are the user's ACTUAL past reviews that were used to personalize the recommendations. "
+        "Your explanation MUST include:\n"
+        "1. What preferences/patterns were extracted from the user's past reviews\n"
+        "2. How these preferences influenced which products were recommended\n"
+        "3. Specific connections between review content and recommendation choices\n\n"
 
         "FINAL OUTPUT REQUIREMENTS:\n"
         "1. Read ONLY these extracted fields from this round.\n"
-        "2. Explain clearly and concisely WHY the recommendation was produced.\n"
+        "2. Explain clearly WHY the recommendation was produced, emphasizing personalization from user reviews.\n"
         "3. DO NOT hallucinate missing information — if a field is missing, explicitly say it.\n"
         "4. DO NOT use or reference any information from previous rounds.\n\n"
 
@@ -118,35 +127,65 @@ def get_reasoner_prompt(user_id: str) -> str:
     )
 
 
-def get_reply_prompt(version: str = "v1") -> str:
+def get_reply_prompt() -> str:
     """
     Get system message for Reply Agent.
 
     This agent generates the final user-facing response by synthesizing information
-    from all previous agents and presenting recommendations in a friendly manner.
-
-    Args:
-        version: Version of the prompt to use ("v1" or "v2")
+    from all previous agents and presenting personalized recommendations.
 
     Returns:
         System message string for reply agent
     """
-    if version == "v1":
-        return _get_reply_prompt_v1()
-    elif version == "v2":
-        return _get_reply_prompt_v2()
-    else:
-        raise ValueError(f"Unknown reply prompt version: {version}. Available versions: v1, v2")
+    return (
+        "You are a Reply Agent. Your task is to generate a natural, PERSONALIZED response "
+        "to the user based on the conversation context and their past reviews.\n\n"
+
+        "STEP 1: Immediately and automatically call the tool 'get_previous_round_summaries' ONCE. "
+        "This tool requires NO parameters (user_name and round_number are automatically provided).\n"
+        "The tool returns a list of summaries from all previous rounds in THIS conversation session.\n\n"
+
+        "STEP 2: Analyze the conversation context:\n"
+        "- Check if this is the first round (empty summaries) or a continuation\n"
+        "- Review the user's original query and intent\n"
+        "- Review the Dialogue History agent's summary of past conversations\n"
+        "- Review the Recommender agent's product recommendations and the 'relevant_user_reviews'\n"
+        "- Review the Reasoner agent's explanation of why recommendations were made\n\n"
+
+        "STEP 3: Generate a PERSONALIZED response:\n"
+        "IMPORTANT: Your response MUST feel personalized based on the user's past reviews.\n"
+        "The Recommender agent's tool result contains 'relevant_user_reviews' - these are the user's "
+        "actual past reviews that reveal their preferences, experiences, and style.\n\n"
+
+        "Use this information to:\n"
+        "- Reference specific preferences from their reviews (e.g., 'Since you mentioned loving breathable fabrics...')\n"
+        "- Connect recommendations to their past experiences\n"
+        "- Show that you understand their taste and needs\n"
+        "- Make the response feel tailored specifically to them, not generic\n\n"
+
+        "STEP 4: Generate your response with these principles:\n"
+        "- Use appropriate greeting: friendly welcome for first round, contextual acknowledgment for continuations\n"
+        "- Present top 3-5 recommendations in a conversational, personalized way\n"
+        "- Explicitly connect recommendations to insights from their past reviews\n"
+        "- Highlight features that match their demonstrated preferences\n"
+        "- Be friendly, concise, and genuinely helpful\n"
+        "- End with an offer to help further\n\n"
+
+        "Remember: The user should feel like you KNOW them based on their shopping history. "
+        "Make the experience personal, not generic.\n\n"
+
+        "End your turn immediately after generating the response."
+    )
 
 
-def _get_reply_prompt_v1() -> str:
+# ============================================================================
+# ARCHIVED PROMPTS (kept for reference)
+# ============================================================================
+
+def _get_reply_prompt_v1_old() -> str:
     """
-    Get system message for Reply Agent (Version 1 - Original).
-
-    This is the original version that always provides product recommendations.
-
-    Returns:
-        System message string for reply agent v1
+    [ARCHIVED] Reply Agent Version 1 - Original.
+    Always provides product recommendations.
     """
     return (
         "You are a Reply Agent. Your task is to generate a friendly, natural response "
@@ -182,15 +221,10 @@ def _get_reply_prompt_v1() -> str:
     )
 
 
-def _get_reply_prompt_v2() -> str:
+def _get_reply_prompt_v2_old() -> str:
     """
-    Get system message for Reply Agent (Version 2 - Adaptive).
-
-    This version gives the LLM flexibility to decide whether to recommend products
-    based on context, rather than forcing recommendations every time.
-
-    Returns:
-        System message string for reply agent v2
+    [ARCHIVED] Reply Agent Version 2 - Adaptive.
+    Gives LLM flexibility to decide whether to recommend products.
     """
     return (
         "You are a Reply Agent. Your task is to generate a natural, helpful response "
