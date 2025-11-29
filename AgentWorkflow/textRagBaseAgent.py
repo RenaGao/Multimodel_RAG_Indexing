@@ -249,7 +249,7 @@ def run_single_category(json_path, category, target_user=None):
 
         # Create wrapper that captures user_id for reply_agent
         def make_reply_tool_wrapper(user_id: str):
-            def wrapper():
+            def wrapper(query: str = "check"):  # Added dummy parameter for Qwen3 compatibility
                 current_round = get_current_round_number(user_id)
                 summaries = load_previous_round_summaries(user_id, current_round)
                 if not summaries:
@@ -274,7 +274,7 @@ def run_single_category(json_path, category, target_user=None):
             description=(
                 "Retrieve summaries of all previous rounds in this conversation session. "
                 "Use this to determine if this is a continuation and to understand the conversation context. "
-                "No parameters required (user_name and round_number are automatically provided)."
+                "Pass any query string (e.g., query='check')."
             ),
         )(reply_wrapper)
 

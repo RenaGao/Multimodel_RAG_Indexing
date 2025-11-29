@@ -151,8 +151,8 @@ def get_reply_prompt() -> str:
         "CRITICAL REQUIREMENT: You MUST call the tool 'get_previous_round_summaries' in your FIRST response.\n"
         "Do NOT generate any text output before calling this tool.\n\n"
 
-        "STEP 1: Call the tool 'get_previous_round_summaries' ONCE. "
-        "This tool requires NO parameters (user_name and round_number are automatically provided).\n"
+        "STEP 1: Call the tool 'get_previous_round_summaries' ONCE with query='check'. "
+        "Example: get_previous_round_summaries(query='check')\n"
         "The tool returns a list of summaries from all previous rounds in THIS conversation session.\n\n"
 
         "STEP 2: Analyze the conversation context:\n"
