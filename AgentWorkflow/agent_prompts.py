@@ -30,10 +30,16 @@ def get_dialogue_history_prompt(user_id: str) -> str:
         "- 'relative_rounds': Similar past conversations from RAG search\n"
         "- 'previous_summaries': Summaries of previous rounds in THIS session\n\n"
 
-        "STEP 2: Generate a concise summary (2-4 sentences) based on:\n"
+        "STEP 2: Generate a concise summary (2-4 sentences) that MUST start with a round marker:\n"
+        "- If 'previous_summaries' is EMPTY: Start with '[Round 1]'\n"
+        "- If 'previous_summaries' has N items: Start with '[Round N+1]'\n\n"
+        "After the round marker, summarize based on:\n"
         "1. Previous round summaries (shows user's journey in this session)\n"
         "2. Similar past conversations (shows long-term preferences)\n"
         "3. Focus on user preferences, patterns, and context for recommendations\n\n"
+
+        "Example output: '[Round 1] This is the user's first query. Based on similar past conversations...'\n"
+        "Example output: '[Round 3] Continuing from previous rounds where user asked about...'\n\n"
 
         "Do not call any other tools. End your turn after generating the summary."
     )
@@ -148,15 +154,18 @@ def get_reply_prompt() -> str:
         "You are a Reply Agent. Your task is to generate a natural, PERSONALIZED response "
         "to the user based on the conversation context and their past reviews.\n\n"
 
-        "STEP 1: Analyze the conversation context:\n"
-        "- Check the Dialogue History agent's tool result for 'previous_summaries' to determine if this is a continuation\n"
-        "- If 'previous_summaries' is empty or mentions 'first round', use a friendly greeting\n"
-        "- If there are previous summaries, acknowledge the continuation naturally\n"
+        "STEP 1: Determine the conversation round:\n"
+        "- Look for '[Round X]' at the START of the Dialogue History agent's summary\n"
+        "- If '[Round 1]': This is the FIRST round - use a friendly greeting like 'Hi there!' or 'Hey!'\n"
+        "- If '[Round 2]' or higher: This is a CONTINUATION - do NOT use generic greetings like 'Hi there!'\n"
+        "  Instead, acknowledge naturally like 'Following up on your question...' or 'Based on what we discussed...'\n\n"
+
+        "STEP 2: Review the conversation context:\n"
         "- Review the user's original query and intent\n"
         "- Review the Recommender agent's product recommendations and the 'relevant_user_reviews'\n"
         "- Review the Reasoner agent's explanation of why recommendations were made\n\n"
 
-        "STEP 2: Generate a PERSONALIZED response:\n"
+        "STEP 3: Generate a PERSONALIZED response:\n"
         "IMPORTANT: Your response MUST feel personalized based on the user's past reviews.\n"
         "The Recommender agent's tool result contains 'relevant_user_reviews' - these are the user's "
         "actual past reviews that reveal their preferences, experiences, and style.\n\n"
@@ -167,7 +176,7 @@ def get_reply_prompt() -> str:
         "- Show that you understand their taste and needs\n"
         "- Make the response feel tailored specifically to them, not generic\n\n"
 
-        "STEP 3: Generate your response with these principles:\n"
+        "STEP 4: Generate your response with these principles:\n"
         "- Use appropriate greeting: friendly welcome for first round, contextual acknowledgment for continuations\n"
         "- Present top 3-5 recommendations in a conversational, personalized way\n"
         "- Explicitly connect recommendations to insights from their past reviews\n"
