@@ -23,16 +23,11 @@ This repository combines both **agent evaluation pipelines** and **personalized 
 | Folder/File | Description |
 |--------------|-------------|
 | **AgentWorkflow/** | Core prompt workflows and pipeline definitions for evaluating agent behavior. |
-| **questions/** | Initial set of manually curated personalized shopping questions. |
-| **questions_v2/** | Updated version including user profile integration for richer personalization testing. |
 | **questions_v3/** | Redundant and domain-specific datasets (e.g., Amazon Fashion). |
 | **user_profiles/** | Example user profiles for different demographics and preference categories. |
 | **Eval\_Agents\_Responses.py** | Baseline evaluation pipeline for multi-turn agent scoring. |
 | **Eval\_Agents\_Response\_V2.py** | New version with integrated RAG (Retrieval-Augmented Generation) and CEFR-style evaluation. |
 | **Eval\_Agents\_Response\_V2\_backup.py** | Backup of the updated pipeline (before refactor). |
-| **generate\_user\_profiles.py** | Automatically build user profiles for personalization evaluation. |
-| **generate\_personalized\_questions.py** | Generate personalized test questions linked to user profiles. |
-| **regenerate\_personalized\_questions\_v2.py** | Improved regeneration with language and profile constraints. |
 | **regenerate\_personalized\_questions\_v3.py** | Experimental generation version (v3 questions). |
 | **generate\_shopping\_questions.py** | Template-driven generation of shopping-related conversational prompts. |
 | **analyze\_item\_review\_distribution.py** | Statistical visualization of item reviews for distribution and coverage analysis. |
