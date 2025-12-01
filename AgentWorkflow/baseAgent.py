@@ -13,15 +13,23 @@ import json
 
 # Thread-safe print lock
 _print_lock = threading.Lock()
+_terminal_stdout = None  # Store original stdout for terminal_print
 
-def thread_safe_print(*args, **kwargs):
-    """Thread-safe print function."""
+def log_print(*args, **kwargs):
+    """Thread-safe print to log file only (not terminal)."""
     with _print_lock:
         print(*args, **kwargs)
 
-# Custom logger class to capture all print outputs
-class TeeLogger:
-    """Captures print output to both console and file"""
+def terminal_print(*args, **kwargs):
+    """Print to terminal only (not to log file). Thread-safe."""
+    global _terminal_stdout
+    if _terminal_stdout is not None:
+        with _print_lock:
+            print(*args, file=_terminal_stdout, **kwargs)
+
+# Logger class that writes to file only
+class FileOnlyLogger:
+    """Write logs to file only, not to terminal"""
     def __init__(self, log_file):
         self.terminal = sys.stdout
         self.log = open(log_file, 'w', encoding='utf-8')
@@ -29,13 +37,12 @@ class TeeLogger:
 
     def write(self, message):
         with self.lock:
-            self.terminal.write(message)
             self.log.write(message)
             self.log.flush()
+        # Don't write to terminal
 
     def flush(self):
         with self.lock:
-            self.terminal.flush()
             self.log.flush()
 
     def close(self):
@@ -111,7 +118,7 @@ def save_baseline_chat_history(user_name: str, category: str, rounds_data: list,
         for round_data in rounds_data:
             f.write(json.dumps(round_data, ensure_ascii=False) + "\n")
 
-    thread_safe_print(f"[CHAT_HISTORY] Saved to: {chat_history_path}")
+    log_print(f"[CHAT_HISTORY] Saved to: {chat_history_path}")
     return chat_history_path
 
 
@@ -151,10 +158,11 @@ def process_single_user(user: str, questions: list, category: str, llm_config: d
     if per_user_limit:
         questions = questions[:per_user_limit]
 
-    thread_safe_print(f"\n{'='*80}")
-    thread_safe_print(f"Processing User: {user}")
-    thread_safe_print(f"Total Questions: {len(questions)}")
-    thread_safe_print(f"{'='*80}\n")
+    terminal_print(f"[START] Processing user: {user} ({len(questions)} questions)")
+    log_print(f"\n{'='*80}")
+    log_print(f"Processing User: {user}")
+    log_print(f"Total Questions: {len(questions)}")
+    log_print(f"{'='*80}\n")
 
     # Create agents for this user
     dialogue_history_agent = AssistantAgent(
@@ -252,9 +260,9 @@ def process_single_user(user: str, questions: list, category: str, llm_config: d
     user_queries = []
 
     for i, q in enumerate(questions, start=1):
-        thread_safe_print(f"\n{'-'*80}")
-        thread_safe_print(f"[{user}] [ROUND {i}/{len(questions)}] Question: {q}")
-        thread_safe_print(f"{'-'*80}\n")
+        log_print(f"\n{'-'*80}")
+        log_print(f"[{user}] [ROUND {i}/{len(questions)}] Question: {q}")
+        log_print(f"{'-'*80}\n")
 
         groupchat = GroupChat(
             agents=[user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent, reply_agent],
@@ -314,7 +322,7 @@ def process_single_user(user: str, questions: list, category: str, llm_config: d
             user_queries.append(q)
 
         category_history.extend(new_msgs)
-        thread_safe_print(f"[{user}] [ROUND {i} COMPLETED]\n")
+        log_print(f"[{user}] [ROUND {i} COMPLETED]\n")
 
     # Prepare results
     results = {
@@ -326,10 +334,11 @@ def process_single_user(user: str, questions: list, category: str, llm_config: d
         "category_history": category_history
     }
 
-    thread_safe_print(f"\n{'='*80}")
-    thread_safe_print(f"Completed User: {user}")
-    thread_safe_print(f"Total Rounds: {len(questions)}")
-    thread_safe_print(f"{'='*80}\n")
+    terminal_print(f"[DONE] Completed user: {user} ({len(questions)} rounds)")
+    log_print(f"\n{'='*80}")
+    log_print(f"Completed User: {user}")
+    log_print(f"Total Rounds: {len(questions)}")
+    log_print(f"{'='*80}\n")
 
     return user, results, rounds_data
 
@@ -349,7 +358,8 @@ def run_single_category(json_path: str, category: str, target_user: str = None, 
 
     if target_user:
         if target_user not in all_users_list:
-            print(f"User '{target_user}' not found in {json_path}")
+            terminal_print(f"[ERROR] User '{target_user}' not found in {json_path}")
+            log_print(f"User '{target_user}' not found in {json_path}")
             return {}
         selected_users = [target_user]
         completed_users = set()
@@ -357,25 +367,30 @@ def run_single_category(json_path: str, category: str, target_user: str = None, 
         completed_users = get_completed_users(category)
         selected_users = [u for u in all_users_list if u not in completed_users]
 
+        # Print skipped users to terminal
+        for u in completed_users:
+            terminal_print(f"[SKIP] Skipping completed user: {u}")
+
     per_user_limit = None  # run all questions
 
     # Create output directory
     output_dir = Path(f"./baseline_dialogues_output/{category}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Configuration:")
-    print(f"  Category: {category}")
-    print(f"  Total users: {len(all_users_list)}")
-    print(f"  Completed users: {len(completed_users)}")
-    print(f"  Remaining users: {len(selected_users)}")
-    print(f"  Threads: {num_threads}")
-    print(f"  Per user limit: {per_user_limit or 'All questions'}")
-    print(f"  Question file: {json_path}")
-    print(f"  Output dir: {output_dir}")
-    print()
+    terminal_print(f"[CATEGORY] Processing {category} ({len(completed_users)}/{len(all_users_list)} completed, {len(selected_users)} remaining)")
+    log_print(f"Configuration:")
+    log_print(f"  Category: {category}")
+    log_print(f"  Total users: {len(all_users_list)}")
+    log_print(f"  Completed users: {len(completed_users)}")
+    log_print(f"  Remaining users: {len(selected_users)}")
+    log_print(f"  Threads: {num_threads}")
+    log_print(f"  Per user limit: {per_user_limit or 'All questions'}")
+    log_print(f"  Question file: {json_path}")
+    log_print(f"  Output dir: {output_dir}")
 
     if not selected_users:
-        print(f"No users to process for category {category}")
+        terminal_print(f"[CATEGORY] No users to process for {category}")
+        log_print(f"No users to process for category {category}")
         return {}
 
     # LLM config
@@ -427,10 +442,11 @@ def run_single_category(json_path: str, category: str, target_user: str = None, 
                     with open(eval_path, "w", encoding="utf-8") as f:
                         json.dump([eval_entry], f, ensure_ascii=False, indent=2)
 
-                    thread_safe_print(f"[EXPORT] Saved evaluation data to: {eval_path}")
+                    log_print(f"[EXPORT] Saved evaluation data to: {eval_path}")
 
             except Exception as e:
-                thread_safe_print(f"[ERROR] Failed to process user {user}: {e}")
+                terminal_print(f"[ERROR] Failed to process user {user}: {e}")
+                log_print(f"[ERROR] Failed to process user {user}: {e}")
                 import traceback
                 traceback.print_exc()
 
@@ -481,25 +497,34 @@ def main():
     assert os.getenv("OPENROUTER_API_KEY"), "Missing OPENROUTER_API_KEY in .env"
 
     # Setup logging
+    global _terminal_stdout
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_dir = Path("./logs")
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"baseline_agent_run_{ts}.log"
 
-    # Redirect stdout to both console and log file
-    logger = TeeLogger(log_file)
+    # Store original stdout for terminal_print
+    _terminal_stdout = sys.stdout
+
+    # Redirect stdout to log file only
+    logger = FileOnlyLogger(log_file)
     sys.stdout = logger
     sys.stderr = logger
 
-    print(f"{'='*80}")
-    print(f"Baseline Agent Workflow Execution Started")
-    print(f"Timestamp: {ts}")
-    print(f"Log file: {log_file}")
-    print(f"Threads: {args.threads}")
-    print(f"{'='*80}\n")
+    # Terminal progress info
+    terminal_print(f"[INFO] Baseline Agent started at {ts}")
+    terminal_print(f"[INFO] Log file: {log_file}")
+    terminal_print(f"[INFO] Threads: {args.threads}")
+
+    log_print(f"{'='*80}")
+    log_print(f"Baseline Agent Workflow Execution Started")
+    log_print(f"Timestamp: {ts}")
+    log_print(f"Log file: {log_file}")
+    log_print(f"Threads: {args.threads}")
+    log_print(f"{'='*80}\n")
 
     # Test API connection
-    print("\n[TEST] Testing OpenRouter API connection...")
+    log_print("\n[TEST] Testing OpenRouter API connection...")
     try:
         import requests
         response = requests.post(
@@ -515,73 +540,79 @@ def main():
             },
             timeout=30
         )
-        print(f"[TEST] API responded with status: {response.status_code}")
+        log_print(f"[TEST] API responded with status: {response.status_code}")
         if response.status_code != 200:
-            print(f"[TEST] API Error: {response.text}")
+            log_print(f"[TEST] API Error: {response.text}")
+            terminal_print(f"[ERROR] API test failed: {response.status_code}")
     except Exception as e:
-        print(f"[TEST] API Test Failed: {e}")
-    print()
+        log_print(f"[TEST] API Test Failed: {e}")
+        terminal_print(f"[ERROR] API test failed: {e}")
 
     # Run based on mode
     if args.all:
         # Batch mode: process all categories
         question_files = get_all_question_files(args.questions_dir)
         if not question_files:
-            print(f"No question files found in {args.questions_dir}")
+            terminal_print(f"[ERROR] No question files found in {args.questions_dir}")
+            log_print(f"No question files found in {args.questions_dir}")
             sys.exit(1)
 
-        print(f"Found {len(question_files)} categories to process:")
+        terminal_print(f"[INFO] Found {len(question_files)} categories to process")
+        log_print(f"Found {len(question_files)} categories to process:")
         for qf in question_files:
-            print(f"  - {extract_category(qf)}: {qf}")
-        print()
+            log_print(f"  - {extract_category(qf)}: {qf}")
 
         for qf in question_files:
             category = extract_category(qf)
 
             if is_category_completed(qf, category):
-                print(f"Skipping {category} (already completed)")
+                terminal_print(f"[SKIP] Skipping category {category} (already completed)")
+                log_print(f"Skipping {category} (already completed)")
                 continue
 
-            print(f"\n{'#'*80}")
-            print(f"# Processing Category: {category}")
-            print(f"# Question file: {qf}")
-            print(f"{'#'*80}\n")
+            log_print(f"\n{'#'*80}")
+            log_print(f"# Processing Category: {category}")
+            log_print(f"# Question file: {qf}")
+            log_print(f"{'#'*80}\n")
 
             try:
                 run_single_category(qf, category, num_threads=args.threads)
             except Exception as e:
-                print(f"Error processing category {category}: {e}")
+                terminal_print(f"[ERROR] Error processing category {category}: {e}")
+                log_print(f"Error processing category {category}: {e}")
                 import traceback
                 traceback.print_exc()
                 continue
 
-        print(f"\n{'='*80}")
-        print(f"All Categories Completed")
-        print(f"Output saved to: ./baseline_dialogues_output/{{category}}/")
-        print(f"Log saved to: {log_file}")
-        print(f"{'='*80}\n")
+        terminal_print(f"[INFO] All categories completed")
+        log_print(f"\n{'='*80}")
+        log_print(f"All Categories Completed")
+        log_print(f"Output saved to: ./baseline_dialogues_output/{{category}}/")
+        log_print(f"Log saved to: {log_file}")
+        log_print(f"{'='*80}\n")
 
     elif args.category:
         # Category mode: find and process specific category
         qf = find_category_file(args.category, args.questions_dir)
         if not qf:
-            print(f"Category '{args.category}' not found in {args.questions_dir}")
+            terminal_print(f"[ERROR] Category '{args.category}' not found in {args.questions_dir}")
+            log_print(f"Category '{args.category}' not found in {args.questions_dir}")
             sys.exit(1)
 
         category = args.category
-        print(f"Category mode: {category}")
-        print(f"Question file: {qf}")
+        log_print(f"Category mode: {category}")
+        log_print(f"Question file: {qf}")
         if args.user_id:
-            print(f"Target user: {args.user_id}")
-        print()
+            log_print(f"Target user: {args.user_id}")
 
         run_single_category(qf, category, target_user=args.user_id, num_threads=args.threads)
 
-        print(f"\n{'='*80}")
-        print(f"Category Completed: {category}")
-        print(f"Output saved to: ./baseline_dialogues_output/{category}/")
-        print(f"Log saved to: {log_file}")
-        print(f"{'='*80}\n")
+        terminal_print(f"[INFO] Category completed: {category}")
+        log_print(f"\n{'='*80}")
+        log_print(f"Category Completed: {category}")
+        log_print(f"Output saved to: ./baseline_dialogues_output/{category}/")
+        log_print(f"Log saved to: {log_file}")
+        log_print(f"{'='*80}\n")
 
     else:
         # Single category mode
@@ -593,28 +624,29 @@ def main():
             if question_files:
                 json_path = question_files[0]
             else:
-                print(f"No question files found. Please specify --input or use --all mode.")
+                terminal_print(f"[ERROR] No question files found. Please specify --input or use --all mode.")
+                log_print(f"No question files found. Please specify --input or use --all mode.")
                 sys.exit(1)
 
         category = extract_category(json_path)
-        print(f"Single category mode: {category}")
-        print(f"Question file: {json_path}")
-        print()
+        log_print(f"Single category mode: {category}")
+        log_print(f"Question file: {json_path}")
 
         run_single_category(json_path, category, num_threads=args.threads)
 
-        print(f"\n{'='*80}")
-        print(f"Baseline Agent Workflow Execution Completed")
-        print(f"Output saved to: ./baseline_dialogues_output/{category}/")
-        print(f"Log saved to: {log_file}")
-        print(f"{'='*80}\n")
+        terminal_print(f"[INFO] Execution completed")
+        log_print(f"\n{'='*80}")
+        log_print(f"Baseline Agent Workflow Execution Completed")
+        log_print(f"Output saved to: ./baseline_dialogues_output/{category}/")
+        log_print(f"Log saved to: {log_file}")
+        log_print(f"{'='*80}\n")
 
     # Restore stdout and close log file
     sys.stdout = logger.terminal
     sys.stderr = logger.terminal
     logger.close()
 
-    print(f"Execution complete. Check {log_file} for detailed logs.")
+    terminal_print(f"[INFO] Execution complete. Check {log_file} for detailed logs.")
 
 
 if __name__ == "__main__":
