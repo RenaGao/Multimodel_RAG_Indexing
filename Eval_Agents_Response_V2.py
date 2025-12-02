@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 # -----------------------------------
 # Configuration
 # -----------------------------------
-MODEL_NAME = "gpt-4o"
+MODEL_NAME = "openai/gpt-4o"
 TEMPERATURE = 0.0
 MAX_WORKERS = 10
 
@@ -28,13 +28,16 @@ PROFILES_DIR = os.path.join(BASE_DIR, "user_profiles")
 
 load_dotenv()
 # -----------------------------------
-# Initialize OpenAI client
+# Initialize OpenRouter client
 # -----------------------------------
-api_key = os.getenv("OPENAI_KEY")
+api_key = os.getenv("OPENROUTER_API_KEY")
 if not api_key:
-    raise ValueError("Missing OPENAI_KEY in environment variables. Please add it to your .env file.")
+    raise ValueError("Missing OPENROUTER_API_KEY in environment variables. Please add it to your .env file.")
 
-client = OpenAI(api_key=api_key)
+client = OpenAI(
+    api_key=api_key,
+    base_url="https://openrouter.ai/api/v1"
+)
 
 # -----------------------------------
 # The Aggregate Evaluation Prompt
