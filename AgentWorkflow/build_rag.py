@@ -9,6 +9,8 @@ Usage:
     python build_rag.py --category Amazon_Fashion
     python build_rag.py --all
     python build_rag.py --category All_Beauty --questions-file ../questions/All_Beauty_questions.json
+    python build_rag.py --captions --category All_Beauty
+    python build_rag.py --captions --all
 """
 
 import argparse
@@ -19,7 +21,8 @@ from buildRag_openrouter import (
     DATA_DIR,
     check_category_complete,
     find_questions_file_for_category,
-    build_item_index_for_category
+    build_item_index_for_category,
+    build_caption_embeddings_for_category
 )
 
 # Load environment variables
@@ -32,6 +35,7 @@ def main():
     parser = argparse.ArgumentParser(description="Build RAG index for Amazon product data")
     parser.add_argument("--category", help="e.g. All_Beauty or Amazon_Fashion")
     parser.add_argument("--all", action="store_true", help="Build index for all available categories")
+    parser.add_argument("--captions", action="store_true", help="Build caption embeddings from image captions")
     parser.add_argument(
         "--questions-file",
         help="Path to questions JSON file for excluding target product reviews"
@@ -41,6 +45,45 @@ def main():
 
     # Parse questions file path if provided
     questions_path = Path(args.questions_file) if args.questions_file else None
+
+    # Handle --captions mode
+    if args.captions:
+        if args.all:
+            # Build caption embeddings for all categories
+            cat2file = {}
+            for p in DATA_DIR.glob("*_top_100_user_itemReview.json"):
+                stem = p.stem
+                suffix = "_top_100_user_itemReview"
+                if not stem.endswith(suffix):
+                    continue
+                cat = stem[: -len(suffix)]
+                cat2file[cat] = p.name
+
+            print(f"\n{'='*80}")
+            print(f"Building caption embeddings for {len(cat2file)} categories...")
+            print(f"{'='*80}\n")
+
+            for cat in sorted(cat2file.keys()):
+                print(f"\n===== Building caption embeddings: {cat} =====")
+                build_caption_embeddings_for_category(cat)
+
+            print(f"\n{'='*80}")
+            print(f"Caption embedding generation complete for all {len(cat2file)} categories!")
+            print(f"{'='*80}\n")
+
+        elif args.category:
+            # Build caption embeddings for single category
+            print(f"\n===== Building caption embeddings for category: {args.category} =====")
+            build_caption_embeddings_for_category(args.category)
+
+        else:
+            parser.print_help()
+            print("\nFor --captions mode, please specify --category or --all")
+            print("Example usage:")
+            print("  python build_rag.py --captions --category All_Beauty")
+            print("  python build_rag.py --captions --all")
+
+        return
 
     if args.all:
         # Build indexes for all categories

@@ -638,9 +638,134 @@ def build_item_index_for_category(category: str, questions_file: Path = None):
     print(f"\n[DONE] Build complete for category: {category}")
 
 
+def build_caption_embeddings_for_category(category: str):
+    """
+    Build caption embeddings for a category.
+
+    Loads image captions and generates embeddings in the SAME ORDER as existing
+    meta.pkl doc_order to ensure alignment with matrix.pkl and review_matrix.pkl.
+
+    Args:
+        category: Category name (e.g., "All_Beauty")
+    """
+    # Paths
+    model_suffix = "qwen3"
+    item_dir = CATALOG_DIR / category / f"item_index_{model_suffix}"
+
+    # Caption file path (relative to AgentWorkflow)
+    caption_file = Path(__file__).parent.parent.parent / "image_captions" / f"{category}_products_meta.jsonl"
+
+    print(f"\n{'='*60}")
+    print(f"Building Caption Embeddings for: {category}")
+    print(f"{'='*60}")
+
+    # Check if caption_matrix.pkl already exists
+    caption_matrix_path = item_dir / "caption_matrix.pkl"
+    if caption_matrix_path.exists():
+        print(f"[INFO] caption_matrix.pkl already exists, skipping...")
+        return
+
+    # Check if meta.pkl exists (required for doc_order)
+    meta_path = item_dir / "meta.pkl"
+    if not meta_path.exists():
+        print(f"[ERROR] meta.pkl not found at {meta_path}")
+        print(f"[ERROR] Please run item index building first")
+        return
+
+    # Check if caption file exists
+    if not caption_file.exists():
+        print(f"[ERROR] Caption file not found: {caption_file}")
+        return
+
+    # 1. Load doc_order from meta.pkl
+    print(f"[INFO] Loading doc_order from meta.pkl...")
+    with open(meta_path, "rb") as f:
+        meta = pickle.load(f)
+    doc_order = [d["item_id"] for d in meta["docs"]]
+    print(f"[INFO] doc_order has {len(doc_order)} items")
+
+    # 2. Load captions and build product_id -> caption map
+    print(f"[INFO] Loading captions from {caption_file.name}...")
+    captions_map = {}
+    with open(caption_file, "r", encoding="utf-8") as f:
+        for line in f:
+            data = json.loads(line.strip())
+            for product_id, caption in data.items():
+                captions_map[product_id] = caption
+    print(f"[INFO] Loaded {len(captions_map)} captions")
+
+    # 3. Build caption_texts in doc_order sequence
+    print(f"[INFO] Building caption texts in doc_order sequence...")
+    caption_texts = []
+    missing_count = 0
+    prefix = "Here is the description generated for the provided image:\n\n"
+
+    for item_id in doc_order:
+        caption = captions_map.get(item_id, "")
+        if caption:
+            # Strip prefix
+            if caption.startswith(prefix):
+                caption = caption[len(prefix):]
+        else:
+            missing_count += 1
+            caption = ""  # Empty string for missing captions
+        caption_texts.append(caption)
+
+    print(f"[INFO] Caption texts: {len(caption_texts)} total, {missing_count} missing")
+
+    # 4. Generate embeddings
+    print(f"\n[INFO] Generating caption embeddings...")
+    embedder = Embedder()
+
+    embeddings = embedder.encode(
+        caption_texts,
+        batch_size=BATCH_SIZE,
+        checkpoint_enabled=True,
+        checkpoint_dir=item_dir,
+        checkpoint_id="caption_embeddings",
+        validation_metadata={
+            'task_type': 'caption_embeddings',
+            'num_items': len(caption_texts),
+            'missing_count': missing_count
+        },
+        use_memmap=True,
+        return_memmap=False  # Need numpy array for pickle save
+    )
+
+    print(f"[INFO] Generated embeddings shape: {embeddings.shape}")
+
+    # 5. Handle missing captions - replace with zero vectors
+    if missing_count > 0:
+        print(f"[INFO] Replacing {missing_count} empty caption embeddings with zeros...")
+        for i, caption in enumerate(caption_texts):
+            if not caption:
+                embeddings[i] = np.zeros(embeddings.shape[1], dtype=np.float32)
+
+    # 6. Save caption_matrix.pkl
+    with open(caption_matrix_path, "wb") as f:
+        pickle.dump(embeddings, f)
+    print(f"[SAVE] caption_matrix.pkl -> {caption_matrix_path}")
+
+    # 7. Save caption_texts.pkl (for RAG retrieval)
+    caption_texts_path = item_dir / "caption_texts.pkl"
+    with open(caption_texts_path, "wb") as f:
+        pickle.dump(caption_texts, f)
+    print(f"[SAVE] caption_texts.pkl -> {caption_texts_path}")
+
+    # Verification
+    print(f"\n[Verification]")
+    print(f"  matrix.pkl shape would be: ({len(doc_order)}, 4096)")
+    print(f"  caption_matrix.pkl shape: {embeddings.shape}")
+    print(f"  caption_texts.pkl length: {len(caption_texts)}")
+    assert embeddings.shape[0] == len(doc_order), "Shape mismatch!"
+    assert len(caption_texts) == len(doc_order), "Caption texts length mismatch!"
+    print(f"[SUCCESS] Caption embeddings and texts complete for {category}")
+
+
 __all__ = [
     'build_review_embeddings',
     'build_user_review_embeddings_for_single_user',
     'build_all_user_review_embeddings',
-    'build_item_index_for_category'
+    'build_item_index_for_category',
+    'build_caption_embeddings_for_category'
 ]
