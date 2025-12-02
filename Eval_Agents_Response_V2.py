@@ -16,9 +16,15 @@ from dotenv import load_dotenv
 # -----------------------------------
 # Configuration
 # -----------------------------------
-MODEL_NAME = "gpt-4o" 
-TEMPERATURE = 0.0 
-MAX_WORKERS = 5
+MODEL_NAME = "gpt-4o"
+TEMPERATURE = 0.0
+MAX_WORKERS = 10
+
+# Base directory paths for all-categories mode
+BASE_DIR = "/Users/dreamy/Desktop/RenaProj/Multimodel_RAG_Indexing"
+BASELINE_DIR = os.path.join(BASE_DIR, "AgentWorkflow/baseline_dialogues_output")
+RAG_DIR = os.path.join(BASE_DIR, "AgentWorkflow/dialogues_output")
+PROFILES_DIR = os.path.join(BASE_DIR, "user_profiles")
 
 load_dotenv()
 # -----------------------------------
@@ -127,7 +133,7 @@ def load_dialogues_from_directory(dir_path):
 
         # Determine if this is baseline or RAG based on filename
         is_baseline = "baseline" in filename
-        is_rag = "eval_dialogues" in filename and not is_baseline
+        is_rag = ("eval_dialogues" in filename or "text_rag_dialogues" in filename) and not is_baseline
 
         # Skip files that don't match expected patterns
         if not (is_baseline or is_rag):
@@ -219,6 +225,202 @@ def get_user_profile(entry, loaded_profiles=None):
     if not profile:
         return "No Profile Available."
     return ", ".join([f"{k}: {v}" for k, v in profile.items()])
+
+
+def load_category_dialogues(category):
+    """
+    Load dialogues for a specific category from both baseline and RAG directories.
+
+    Args:
+        category: Category name (e.g., "Electronics", "Books")
+
+    Returns:
+        Tuple of (dialogues list, loaded_profiles dict)
+    """
+    import glob
+
+    dialogues = []
+    baseline_count = 0
+    rag_count = 0
+
+    # Load baseline dialogues
+    baseline_category_dir = os.path.join(BASELINE_DIR, category)
+    if os.path.isdir(baseline_category_dir):
+        baseline_files = glob.glob(os.path.join(baseline_category_dir, "baseline_dialogues_*.json"))
+        for file_path in baseline_files:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    data = [data]
+                for dialogue in data:
+                    dialogue["rag_enabled"] = False
+                    dialogue["category"] = category
+                    dialogues.append(dialogue)
+                baseline_count += len(data)
+            except Exception as e:
+                print(f"✗ Error loading {os.path.basename(file_path)}: {str(e)}")
+
+    # Load RAG dialogues
+    rag_category_dir = os.path.join(RAG_DIR, category)
+    if os.path.isdir(rag_category_dir):
+        rag_files = glob.glob(os.path.join(rag_category_dir, "text_rag_dialogues_*.json"))
+        for file_path in rag_files:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    data = [data]
+                for dialogue in data:
+                    dialogue["rag_enabled"] = True
+                    dialogue["category"] = category
+                    dialogues.append(dialogue)
+                rag_count += len(data)
+            except Exception as e:
+                print(f"✗ Error loading {os.path.basename(file_path)}: {str(e)}")
+
+    # Load user profiles for this category
+    profiles_path = os.path.join(PROFILES_DIR, f"{category}_user_profiles.json")
+    loaded_profiles = None
+    if os.path.exists(profiles_path):
+        try:
+            with open(profiles_path, "r", encoding="utf-8") as f:
+                loaded_profiles = json.load(f)
+        except Exception as e:
+            print(f"⚠️  Error loading profiles for {category}: {str(e)}")
+
+    return dialogues, loaded_profiles, baseline_count, rag_count
+
+
+def batch_evaluate_category(category, output_dir):
+    """
+    Evaluate all dialogues for a single category.
+
+    Args:
+        category: Category name
+        output_dir: Directory to save results
+
+    Returns:
+        Dict with evaluation results and statistics
+    """
+    print(f"\n{'='*60}")
+    print(f"📂 Processing category: {category}")
+    print(f"{'='*60}")
+
+    dialogues, loaded_profiles, baseline_count, rag_count = load_category_dialogues(category)
+
+    if not dialogues:
+        print(f"⚠️  No dialogues found for {category}")
+        return None
+
+    print(f"✓ Loaded {len(dialogues)} dialogues (Baseline: {baseline_count}, RAG: {rag_count})")
+    if loaded_profiles:
+        print(f"✓ Loaded {len(loaded_profiles)} user profiles")
+
+    # Evaluate dialogues with thread pool
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = [executor.submit(evaluate_single_entry, d, loaded_profiles) for d in dialogues]
+        for i, future in enumerate(concurrent.futures.as_completed(futures)):
+            results.append(future.result())
+            if (i + 1) % 10 == 0:
+                print(f"  Evaluated {i + 1}/{len(dialogues)} dialogues...")
+
+    # Save category results
+    output_path = os.path.join(output_dir, f"{category}_eval.json")
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+    print(f"💾 Saved results to: {output_path}")
+
+    # Generate paired comparison
+    paired_stats = generate_paired_comparison(results)
+    if "error" not in paired_stats:
+        paired_output_path = os.path.join(output_dir, f"{category}_paired.json")
+        with open(paired_output_path, "w", encoding="utf-8") as f:
+            json.dump(paired_stats, f, ensure_ascii=False, indent=2)
+        print(f"💾 Saved paired comparison to: {paired_output_path}")
+
+    # Print category summary
+    print_aggregate_report(results)
+
+    return {
+        "category": category,
+        "total_dialogues": len(dialogues),
+        "baseline_count": baseline_count,
+        "rag_count": rag_count,
+        "results": results,
+        "paired_stats": paired_stats
+    }
+
+
+def batch_evaluate_all_categories(output_dir="eval_results"):
+    """
+    Evaluate all categories and save per-category results.
+
+    Args:
+        output_dir: Directory to save all results
+    """
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Discover all categories from baseline directory
+    categories = []
+    if os.path.isdir(BASELINE_DIR):
+        categories = [d for d in os.listdir(BASELINE_DIR)
+                      if os.path.isdir(os.path.join(BASELINE_DIR, d))]
+    categories.sort()
+
+    print(f"\n{'='*60}")
+    print(f"🚀 BATCH EVALUATION - ALL CATEGORIES")
+    print(f"{'='*60}")
+    print(f"Found {len(categories)} categories to process")
+    print(f"Output directory: {output_dir}")
+    print(f"Max workers: {MAX_WORKERS}")
+
+    all_results = []
+    category_summaries = []
+
+    for i, category in enumerate(categories, 1):
+        print(f"\n[{i}/{len(categories)}] ", end="")
+        result = batch_evaluate_category(category, output_dir)
+        if result:
+            all_results.extend(result["results"])
+            category_summaries.append({
+                "category": result["category"],
+                "total_dialogues": result["total_dialogues"],
+                "baseline_count": result["baseline_count"],
+                "rag_count": result["rag_count"],
+                "paired_stats_summary": {
+                    "total_pairs": result["paired_stats"].get("total_pairs", 0),
+                    "avg_overall_diff": result["paired_stats"].get("avg_overall_diff", 0),
+                    "rag_better_count": result["paired_stats"].get("rag_better_count", 0),
+                    "baseline_better_count": result["paired_stats"].get("baseline_better_count", 0),
+                } if "error" not in result["paired_stats"] else {"error": result["paired_stats"]["error"]}
+            })
+
+    # Save overall summary
+    summary_path = os.path.join(output_dir, "all_categories_summary.json")
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(category_summaries, f, ensure_ascii=False, indent=2)
+
+    # Print final summary
+    print(f"\n{'='*60}")
+    print(f"📊 FINAL SUMMARY - ALL CATEGORIES")
+    print(f"{'='*60}")
+    print(f"Total categories processed: {len(category_summaries)}")
+    print(f"Total dialogues evaluated: {len(all_results)}")
+
+    total_rag_better = sum(s["paired_stats_summary"].get("rag_better_count", 0) for s in category_summaries)
+    total_baseline_better = sum(s["paired_stats_summary"].get("baseline_better_count", 0) for s in category_summaries)
+    total_pairs = sum(s["paired_stats_summary"].get("total_pairs", 0) for s in category_summaries)
+
+    if total_pairs > 0:
+        print(f"\n🏆 Overall Win/Loss (across all categories):")
+        print(f"   RAG Better:      {total_rag_better:3d} ({total_rag_better/total_pairs*100:.1f}%)")
+        print(f"   Baseline Better: {total_baseline_better:3d} ({total_baseline_better/total_pairs*100:.1f}%)")
+
+    print(f"\n💾 Summary saved to: {summary_path}")
+
 
 def evaluate_single_entry(entry, loaded_profiles=None):
     # 1. Prepare Context (User + Agent)
@@ -477,9 +679,20 @@ if __name__ == "__main__":
         description="Evaluate AI Shopping Assistant dialogues with RAG vs Baseline comparison"
     )
     parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Evaluate all categories using standard directory structure"
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="eval_results",
+        help="Output directory for all-categories mode (default: eval_results)"
+    )
+    parser.add_argument(
         "--input",
         type=str,
-        required=True,
+        default=None,
         help="Directory containing dialogue JSON files (auto-detects baseline/RAG) or single JSON file"
     )
     parser.add_argument(
@@ -491,7 +704,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--profiles",
         type=str,
-        default='/data/gpfs/projects/punim2620/Multimodel_RAG_Indexing/AmazonReviews/Multimodel_RAG_Indexing/user_profiles.json',
+        default=None,
         help="User profiles JSON file (optional, generated by generate_user_profiles.py)"
     )
     parser.add_argument(
@@ -501,4 +714,12 @@ if __name__ == "__main__":
         help="Output file for paired comparison results (optional, e.g., paired_comparison.json)"
     )
     args = parser.parse_args()
-    batch_evaluate(args.input, args.output, args.profiles, args.paired_output)
+
+    if args.all:
+        # All-categories mode
+        batch_evaluate_all_categories(args.output_dir)
+    else:
+        # Single input mode (legacy)
+        if not args.input:
+            parser.error("--input is required when not using --all mode")
+        batch_evaluate(args.input, args.output, args.profiles, args.paired_output)
