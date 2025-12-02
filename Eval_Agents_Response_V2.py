@@ -99,7 +99,7 @@ Goal: {user_goal}
 }}
 
 **Valid Flaws:**
-["Forgot_Constraint_Mid_Chat", "Repetitive_Loops", "Hallucination", "Tone_Switch", "Passive_Behavior", "None"]
+["Forgot_Constraint_Mid_Chat", "Repetitive_Loops", "Tone_Switch", "Passive_Behavior", "None"]
 """
 
 # -----------------------------------
@@ -388,18 +388,29 @@ def batch_evaluate_all_categories(output_dir="eval_results"):
         result = batch_evaluate_category(category, output_dir)
         if result:
             all_results.extend(result["results"])
-            category_summaries.append({
-                "category": result["category"],
-                "total_dialogues": result["total_dialogues"],
-                "baseline_count": result["baseline_count"],
-                "rag_count": result["rag_count"],
-                "paired_stats_summary": {
-                    "total_pairs": result["paired_stats"].get("total_pairs", 0),
-                    "avg_overall_diff": result["paired_stats"].get("avg_overall_diff", 0),
-                    "rag_better_count": result["paired_stats"].get("rag_better_count", 0),
-                    "baseline_better_count": result["paired_stats"].get("baseline_better_count", 0),
-                } if "error" not in result["paired_stats"] else {"error": result["paired_stats"]["error"]}
-            })
+            ps = result["paired_stats"]
+            if "error" not in ps:
+                category_summaries.append({
+                    "category": result["category"],
+                    "total_dialogues": result["total_dialogues"],
+                    "baseline_count": result["baseline_count"],
+                    "rag_count": result["rag_count"],
+                    "paired_stats_summary": {
+                        "total_pairs": ps.get("total_pairs", 0),
+                        "rag": ps.get("rag", {}),
+                        "baseline": ps.get("baseline", {}),
+                        "rag_better_count": ps.get("rag_better_count", 0),
+                        "baseline_better_count": ps.get("baseline_better_count", 0),
+                    }
+                })
+            else:
+                category_summaries.append({
+                    "category": result["category"],
+                    "total_dialogues": result["total_dialogues"],
+                    "baseline_count": result["baseline_count"],
+                    "rag_count": result["rag_count"],
+                    "paired_stats_summary": {"error": ps["error"]}
+                })
 
     # Save overall summary
     summary_path = os.path.join(output_dir, "all_categories_summary.json")
@@ -604,14 +615,24 @@ def generate_paired_comparison(results):
     if not pairs:
         return {"error": "No paired dialogues found"}
 
-    # Calculate statistics
+    # Calculate separate averages for RAG and Baseline
+    n = len(pairs)
     stats = {
-        "total_pairs": len(pairs),
-        "avg_consistency_diff": sum(p["consistency_diff"] for p in pairs) / len(pairs),
-        "avg_synthesis_diff": sum(p["synthesis_diff"] for p in pairs) / len(pairs),
-        "avg_trajectory_diff": sum(p["trajectory_diff"] for p in pairs) / len(pairs),
-        "avg_tone_diff": sum(p["tone_diff"] for p in pairs) / len(pairs),
-        "avg_overall_diff": sum(p["overall_diff"] for p in pairs) / len(pairs),
+        "total_pairs": n,
+        "rag": {
+            "avg_consistency": sum(p["rag_scores"]["GlobalPersonalizationConsistency"]["score"] for p in pairs) / n,
+            "avg_synthesis": sum(p["rag_scores"]["CumulativeInformationSynthesis"]["score"] for p in pairs) / n,
+            "avg_trajectory": sum(p["rag_scores"]["InteractionTrajectory"]["score"] for p in pairs) / n,
+            "avg_tone": sum(p["rag_scores"]["ToneConsistency"]["score"] for p in pairs) / n,
+            "avg_overall": sum(p["rag_scores"].get("OverallScore", 0) for p in pairs) / n
+        },
+        "baseline": {
+            "avg_consistency": sum(p["baseline_scores"]["GlobalPersonalizationConsistency"]["score"] for p in pairs) / n,
+            "avg_synthesis": sum(p["baseline_scores"]["CumulativeInformationSynthesis"]["score"] for p in pairs) / n,
+            "avg_trajectory": sum(p["baseline_scores"]["InteractionTrajectory"]["score"] for p in pairs) / n,
+            "avg_tone": sum(p["baseline_scores"]["ToneConsistency"]["score"] for p in pairs) / n,
+            "avg_overall": sum(p["baseline_scores"].get("OverallScore", 0) for p in pairs) / n
+        },
         "rag_better_count": sum(1 for p in pairs if p["overall_diff"] > 0.1),
         "baseline_better_count": sum(1 for p in pairs if p["overall_diff"] < -0.1),
         "tie_count": sum(1 for p in pairs if abs(p["overall_diff"]) <= 0.1),
@@ -639,12 +660,22 @@ def print_paired_comparison_report(paired_stats, output_path=None):
     total = paired_stats["total_pairs"]
     print(f"\n🔗 Total Paired Dialogues: {total}")
 
-    print("\n📈 Average Score Differences (RAG - Baseline):")
-    print(f"   Global Consistency:     {paired_stats['avg_consistency_diff']:+.2f}")
-    print(f"   Information Synthesis:  {paired_stats['avg_synthesis_diff']:+.2f}")
-    print(f"   Interaction Trajectory: {paired_stats['avg_trajectory_diff']:+.2f}")
-    print(f"   Tone Consistency:       {paired_stats['avg_tone_diff']:+.2f}")
-    print(f"   Overall Score:          {paired_stats['avg_overall_diff']:+.2f}")
+    rag = paired_stats["rag"]
+    baseline = paired_stats["baseline"]
+
+    print("\n📈 RAG Average Scores:")
+    print(f"   Global Consistency:     {rag['avg_consistency']:.2f}")
+    print(f"   Information Synthesis:  {rag['avg_synthesis']:.2f}")
+    print(f"   Interaction Trajectory: {rag['avg_trajectory']:.2f}")
+    print(f"   Tone Consistency:       {rag['avg_tone']:.2f}")
+    print(f"   Overall Score:          {rag['avg_overall']:.2f}")
+
+    print("\n📉 Baseline Average Scores:")
+    print(f"   Global Consistency:     {baseline['avg_consistency']:.2f}")
+    print(f"   Information Synthesis:  {baseline['avg_synthesis']:.2f}")
+    print(f"   Interaction Trajectory: {baseline['avg_trajectory']:.2f}")
+    print(f"   Tone Consistency:       {baseline['avg_tone']:.2f}")
+    print(f"   Overall Score:          {baseline['avg_overall']:.2f}")
 
     rag_better = paired_stats["rag_better_count"]
     baseline_better = paired_stats["baseline_better_count"]
