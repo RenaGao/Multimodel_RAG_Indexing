@@ -20,8 +20,8 @@ MODEL_NAME = "gpt-4o"
 TEMPERATURE = 0.0
 MAX_WORKERS = 10
 
-# Base directory paths for all-categories mode
-BASE_DIR = "/Users/dreamy/Desktop/RenaProj/Multimodel_RAG_Indexing"
+# Base directory paths for all-categories mode (relative to script location)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BASELINE_DIR = os.path.join(BASE_DIR, "AgentWorkflow/baseline_dialogues_output")
 RAG_DIR = os.path.join(BASE_DIR, "AgentWorkflow/dialogues_output")
 PROFILES_DIR = os.path.join(BASE_DIR, "user_profiles")

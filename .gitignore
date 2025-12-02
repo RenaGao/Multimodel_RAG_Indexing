@@ -12,3 +12,5 @@ training_metrics.json
 __pycache__
 ./DS_Store
 /AgentWorkflow/storage
+/AgentWorkflow/baseline_dialogues_output
+/AgentWorkflow/dialogues_output
