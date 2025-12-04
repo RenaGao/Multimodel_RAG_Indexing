@@ -828,6 +828,105 @@ def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = N
         "previous_summaries": previous_summaries
     }
 
+
+# Dialogue History Agent (Multimodal version - uses OpenRouter API)
+def rag_search_for_dialogue_history_agent_multimodal(
+    user_name: str,
+    current_query: str = None,
+    llm_config: dict = None
+) -> dict:
+    """
+    Multimodal version: uses OpenRouter API instead of local SentenceTransformer.
+    Search for relevant dialogue history rounds using semantic similarity.
+    """
+    print(f"[DEBUG] rag_search_for_dialogue_history_agent_multimodal called")
+    print(f"[DEBUG]   user_name: {user_name}")
+    print(f"[DEBUG]   current_query: {current_query}")
+
+    up = _user_paths(user_name)
+
+    # Load historical rounds
+    all_rounds = list(_iter_jsonl(up["chat_history"]))
+    print(f"[DEBUG] Found {len(all_rounds)} total rounds")
+
+    # Determine current round number
+    current_round_number = len(all_rounds)
+
+    # Incrementally generate summaries for all previous rounds that don't have them
+    if llm_config and len(all_rounds) > 1:
+        for round_data in all_rounds[:-1]:
+            round_num = round_data.get("round_number")
+            if not round_data.get("round_summary"):
+                print(f"[SUMMARY_GEN] Generating summary for Round {round_num}")
+                summary = _generate_summary_for_round(round_data, llm_config)
+                if summary:
+                    save_round_summary(user_name, round_num, summary)
+                    print(f"[SUMMARY_GEN] Successfully saved summary for Round {round_num}")
+
+    # Load all previous summaries (including newly generated ones)
+    previous_summaries = load_previous_round_summaries(user_name, current_round_number)
+    print(f"[DEBUG] Loaded {len(previous_summaries)} previous round summaries")
+
+    # Exclude the last round (current round being processed)
+    if len(all_rounds) > 0:
+        all_rounds = all_rounds[:-1]
+        print(f"[DEBUG] Excluding current round, searching in {len(all_rounds)} historical rounds")
+
+    if not all_rounds:
+        print(f"[DEBUG] No historical rounds to search, returning empty")
+        return {
+            "user_name": user_name,
+            "relative_rounds": [],
+            "previous_summaries": previous_summaries
+        }
+
+    # Load round embeddings
+    round_embs, metadata = _load_round_embeddings(user_name)
+
+    # Also exclude the last embedding (current round's embedding)
+    if round_embs is not None and round_embs.shape[0] > 0:
+        round_embs = round_embs[:-1]
+        print(f"[DEBUG] Using {round_embs.shape[0]} historical embeddings for search")
+
+    if round_embs is None or current_query is None:
+        print(f"[DEBUG] No embeddings or no query, returning empty")
+        return {
+            "user_name": user_name,
+            "relative_rounds": [],
+            "previous_summaries": previous_summaries
+        }
+
+    # Generate embedding for current query using OpenRouter API
+    embedder = OpenRouterEmbedder()
+    current_emb = embedder.encode([current_query], normalize_embeddings=True)
+
+    # Calculate similarities
+    sims = _cosine(current_emb, round_embs).ravel()
+
+    # Get top 1
+    top_k = 1
+    order = sims.argsort()[::-1]
+    top_indices = order[:top_k]
+
+    # Build result
+    relative_rounds = []
+    for idx in top_indices:
+        round_data = all_rounds[idx]
+        similarity_score = float(sims[idx])
+        relative_rounds.append({
+            "round_data": round_data,
+            "similarity_score": similarity_score
+        })
+        print(f"[DEBUG] Top similar round: round_number={round_data.get('round_number')}, "
+              f"query='{round_data.get('user_query', '')[:50]}...', similarity={similarity_score:.4f}")
+
+    return {
+        "user_name": user_name,
+        "relative_rounds": relative_rounds,
+        "previous_summaries": previous_summaries
+    }
+
+
 def _load_user_profile_embedding(user_name: str) -> Optional[np.ndarray]:
     up = _user_paths(user_name)
     uidx_dir = up["user_index"]

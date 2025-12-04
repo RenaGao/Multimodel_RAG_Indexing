@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from ragFunctions import (
     save_chat_history,
     rag_search_for_recommend_agent_multimodal,  # Use multimodal version
-    rag_search_for_dialogue_history_agent,
+    rag_search_for_dialogue_history_agent_multimodal,  # Use multimodal version
     append_agent_message,
     save_round_summary,
     load_previous_round_summaries,
@@ -253,10 +253,10 @@ def process_single_user(user: str, questions: list, category: str, llm_config: d
         code_execution_config=False,
     )
 
-    # Create wrapper for dialogue_history_agent
+    # Create wrapper for dialogue_history_agent - USE MULTIMODAL VERSION
     def make_dh_tool_wrapper(user_id: str, llm_cfg: dict):
         def wrapper(current_query: str):
-            return rag_search_for_dialogue_history_agent(
+            return rag_search_for_dialogue_history_agent_multimodal(
                 user_name=user_id,
                 current_query=current_query,
                 llm_config=llm_cfg
