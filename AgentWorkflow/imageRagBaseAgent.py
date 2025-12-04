@@ -10,6 +10,8 @@ import json
 import sys
 import argparse
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from ragFunctions import (
     save_chat_history,
     rag_search_for_recommend_agent_multimodal,  # Use multimodal version
@@ -19,10 +21,20 @@ from ragFunctions import (
     load_previous_round_summaries,
     get_current_round_number,
     set_dataset_category,
-    clear_user_storage,
     _user_paths
 )
 from agent_prompts import get_dialogue_history_prompt, get_recommender_prompt, get_reasoner_prompt, get_reply_prompt
+
+# 多线程配置
+NUM_WORKERS = 10  # 同时处理 10 个用户
+
+# 线程安全的打印锁
+_print_lock = threading.Lock()
+
+def thread_safe_print(*args, **kwargs):
+    """线程安全的打印函数"""
+    with _print_lock:
+        print(*args, **kwargs)
 
 # Custom logger class to capture all print outputs
 class TeeLogger:
@@ -30,15 +42,18 @@ class TeeLogger:
     def __init__(self, log_file):
         self.terminal = sys.stdout
         self.log = open(log_file, 'w', encoding='utf-8')
+        self.lock = threading.Lock()
 
     def write(self, message):
-        self.terminal.write(message)
-        self.log.write(message)
-        self.log.flush()  # Ensure immediate write
+        with self.lock:
+            self.terminal.write(message)
+            self.log.write(message)
+            self.log.flush()  # Ensure immediate write
 
     def flush(self):
-        self.terminal.flush()
-        self.log.flush()
+        with self.lock:
+            self.terminal.flush()
+            self.log.flush()
 
     def close(self):
         self.log.close()
@@ -96,13 +111,16 @@ def is_category_completed(questions_path, category):
     completed = get_completed_users(category)
     return users.issubset(completed)
 
-# Retry mechanism for agents that must call tools
-_agent_retry_counts = {}  # {agent_name: retry_count}
-_agent_tool_called = set()  # Track agents that have successfully called their tool
-MAX_TOOL_CALL_RETRIES = 3
+def clear_single_user_storage(user_name: str):
+    """Clear storage for a single user (thread-safe)."""
+    from ragFunctions import _safe_user_dir, USERS_DIR
+    udir = USERS_DIR / _safe_user_dir(user_name)
+    if udir.exists():
+        shutil.rmtree(udir)
+        thread_safe_print(f"[CLEAR] Cleared storage for user: {user_name}")
 
-
-def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
+def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent,
+                     agent_retry_counts, agent_tool_called, max_retries=3):
     """
     Flow:
       User -> DialogueHistory (handles its tool call cycles)
@@ -110,9 +128,10 @@ def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
            -> Reasoner        (handles its tool call cycles)
            -> Reply           (generates final user response)
            -> End
+
+    使用传入的字典来跟踪状态（线程隔离）
     """
     # Agents that MUST call a tool in their first response
-    # Reply agent no longer needs tool - it analyzes Dialogue History agent's output directly
     tool_required_agents = {dh_agent, rec_agent}
 
     def _last(gc):
@@ -133,7 +152,7 @@ def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
         # When tool returns, mark this agent as having successfully called its tool
         if _is_tool_return(last):
             if last_speaker and last_speaker in tool_required_agents:
-                _agent_tool_called.add(last_speaker.name)
+                agent_tool_called.add(last_speaker.name)
             return last_speaker
 
         # When agent makes a tool call, continue to execute it
@@ -145,21 +164,21 @@ def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
             agent_name = last_speaker.name
 
             # If agent already successfully called its tool, continue normal flow
-            if agent_name in _agent_tool_called:
-                _agent_tool_called.discard(agent_name)  # Clear for next round
-                _agent_retry_counts[agent_name] = 0
+            if agent_name in agent_tool_called:
+                agent_tool_called.discard(agent_name)  # Clear for next round
+                agent_retry_counts[agent_name] = 0
                 # Fall through to normal flow below
             else:
                 # Agent didn't call tool, check if we should retry
-                current_retries = _agent_retry_counts.get(agent_name, 0)
+                current_retries = agent_retry_counts.get(agent_name, 0)
 
-                if current_retries < MAX_TOOL_CALL_RETRIES:
-                    _agent_retry_counts[agent_name] = current_retries + 1
-                    print(f"[RETRY] {agent_name} didn't call tool, retry {current_retries + 1}/{MAX_TOOL_CALL_RETRIES}")
+                if current_retries < max_retries:
+                    agent_retry_counts[agent_name] = current_retries + 1
+                    thread_safe_print(f"[RETRY] {agent_name} didn't call tool, retry {current_retries + 1}/{max_retries}")
                     return last_speaker  # Force retry
                 else:
-                    print(f"[WARNING] {agent_name} failed to call tool after {MAX_TOOL_CALL_RETRIES} retries, continuing...")
-                    _agent_retry_counts[agent_name] = 0  # Reset counter
+                    thread_safe_print(f"[WARNING] {agent_name} failed to call tool after {max_retries} retries, continuing...")
+                    agent_retry_counts[agent_name] = 0  # Reset counter
 
         if last_speaker is user_agent:
             return dh_agent
@@ -180,8 +199,187 @@ def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent):
 
     return select_next
 
+
+def process_single_user(user: str, questions: list, category: str, llm_config: dict, per_user_limit: int = None):
+    """
+    处理单个用户的所有问题（在独立线程中运行）
+
+    Args:
+        user: 用户ID
+        questions: 该用户的问题列表
+        category: 数据集类别
+        llm_config: LLM配置
+        per_user_limit: 每个用户处理的问题数量限制
+
+    Returns:
+        用户的对话历史
+    """
+    thread_safe_print(f"\n[THREAD-{threading.current_thread().name}] Starting user: {user}")
+
+    if per_user_limit:
+        questions = questions[:per_user_limit]
+
+    # 每个线程独立的重试计数器
+    agent_retry_counts = {}
+    agent_tool_called = set()
+
+    dialogue_history_agent = AssistantAgent(
+        name=f"Dialogue_History_{user}_agent",
+        llm_config=llm_config,
+        system_message=get_dialogue_history_prompt(user),
+    )
+
+    recommend_agent = AssistantAgent(
+        name=f"Recommender_{user}_agent",
+        llm_config=llm_config,
+        system_message=get_recommender_prompt(user),
+    )
+
+    reason_agent = AssistantAgent(
+        name=f"Reasoner_{user}_agent",
+        llm_config=llm_config,
+        system_message=get_reasoner_prompt(user),
+    )
+
+    reply_agent = AssistantAgent(
+        name=f"Reply_{user}_agent",
+        llm_config=llm_config,
+        system_message=get_reply_prompt(),
+    )
+
+    user_proxy_agent = UserProxyAgent(
+        name=f"User_{user}_proxy_agent",
+        human_input_mode="NEVER",
+        code_execution_config=False,
+    )
+
+    # Create wrapper for dialogue_history_agent
+    def make_dh_tool_wrapper(user_id: str, llm_cfg: dict):
+        def wrapper(current_query: str):
+            return rag_search_for_dialogue_history_agent(
+                user_name=user_id,
+                current_query=current_query,
+                llm_config=llm_cfg
+            )
+        return wrapper
+
+    dh_wrapper = make_dh_tool_wrapper(user, llm_config)
+
+    dialogue_history_agent.register_for_llm(
+        name="rag_search_for_dialogue_history_agent",
+        description=(
+            "Retrieve relevant user dialogue history and preference records from the vector database. "
+            "Use it to infer user interests, habits, or preference. "
+            "Only requires 'current_query' parameter (user_name is automatically provided)."
+        ),
+    )(dh_wrapper)
+
+    dialogue_history_agent.register_for_execution(
+        name="rag_search_for_dialogue_history_agent"
+    )(dh_wrapper)
+
+    # Create wrapper for recommend_agent - USE MULTIMODAL VERSION
+    def make_rec_tool_wrapper(user_id: str):
+        def wrapper(user_query: str):
+            return rag_search_for_recommend_agent_multimodal(
+                user_name=user_id,
+                user_query=user_query
+            )
+        return wrapper
+
+    rec_wrapper = make_rec_tool_wrapper(user)
+
+    recommend_agent.register_for_llm(
+        name="rag_search_for_recommend_agent",
+        description=(
+            "Search the vector database for product, item, or knowledge information relevant to the user's query. "
+            "Uses multimodal fusion (metadata + reviews + image captions) for personalized recommendations. "
+            "Only requires 'user_query' parameter (user_name is automatically provided)."
+        ),
+    )(rec_wrapper)
+
+    recommend_agent.register_for_execution(
+        name="rag_search_for_recommend_agent"
+    )(rec_wrapper)
+
+    user_history = []
+
+    thread_safe_print(f"\n{'='*80}")
+    thread_safe_print(f"[THREAD] Processing User: {user}")
+    thread_safe_print(f"[THREAD] Total Questions: {len(questions)}")
+    thread_safe_print(f"{'='*80}\n")
+
+    for i, q in enumerate(questions, start=1):
+        thread_safe_print(f"\n[{user}] Round {i}/{len(questions)}: {q[:50]}...")
+
+        groupchat = GroupChat(
+            agents=[user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent, reply_agent],
+            messages=[],
+            max_round=25,
+            speaker_selection_method=make_simple_flow(
+                user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent, reply_agent,
+                agent_retry_counts, agent_tool_called
+            )
+        )
+
+        manager = GroupChatManager(groupchat=groupchat, llm_config=llm_config)
+
+        save_chat_history(f"[USER_QUESTION_{i}] [{user_proxy_agent.name}] {q}", user)
+        user_proxy_agent.initiate_chat(manager, message=q)
+
+        new_messages = groupchat.messages
+
+        for idx, msg in enumerate(new_messages):
+            if not isinstance(msg, dict):
+                continue
+            msg_name = msg.get("name", "")
+            msg_role = msg.get("role", "")
+            msg_content = msg.get("content", "")
+
+            if msg_role in ("tool", "function"):
+                continue
+            if not msg_content or str(msg_content).strip() in ("", "None"):
+                continue
+            if msg_name == user_proxy_agent.name:
+                continue
+
+            if msg_name in [dialogue_history_agent.name, recommend_agent.name, reason_agent.name, reply_agent.name]:
+                append_agent_message(msg_content, "assistant", msg_name, user)
+
+        user_history.extend(new_messages)
+        thread_safe_print(f"[{user}] Round {i} completed")
+
+    thread_safe_print(f"\n[THREAD] Completed User: {user}, Total Rounds: {len(questions)}")
+
+    # Export dialogues for evaluation
+    eval_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    eval_dir = Path(f"./multimodal_dialogues_output/{category}")
+    eval_dir.mkdir(parents=True, exist_ok=True)
+    eval_output_path = eval_dir / f"multimodal_rag_dialogues_{user}_{eval_timestamp}.json"
+
+    # Check if export succeeded
+    export_result = export_dialogues_for_eval(user, output_path=str(eval_output_path))
+    if export_result is None:
+        thread_safe_print(f"[WARNING] Failed to export dialogues for user {user}")
+    else:
+        thread_safe_print(f"[SUCCESS] Exported dialogues to: {export_result}")
+
+    # Backup chat_history.jsonl
+    up = _user_paths(user)
+    if up["chat_history"].exists():
+        backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = eval_dir / f"{category}_{user}_{backup_timestamp}.jsonl"
+        shutil.copy2(up["chat_history"], backup_path)
+        thread_safe_print(f"[BACKUP] Chat history saved to: {backup_path}")
+
+    # Clear this user's storage (thread-safe, only clears this user)
+    clear_single_user_storage(user)
+
+    return user_history
+
+
 def run_single_category(json_path, category, target_user=None):
-    """Run agent workflow for a single category."""
+    """Run agent workflow for a single category with multi-threading."""
     # Set the dataset category for ragFunctions
     set_dataset_category(category)
 
@@ -203,9 +401,6 @@ def run_single_category(json_path, category, target_user=None):
     # how many questions can run for one category
     per_user_limit = None  # run all questions in the category
 
-    # store output for json format
-    results = {}
-
     print(f"Configuration:")
     print(f"  Category: {category}")
     print(f"  Total users: {len(all_users_list)}")
@@ -214,9 +409,10 @@ def run_single_category(json_path, category, target_user=None):
     print(f"  Per user limit: {per_user_limit or 'All questions'}")
     print(f"  Question file: {json_path}")
     print(f"  RAG Mode: MULTIMODAL (metadata + review + caption)")
+    print(f"  Parallel Workers: {NUM_WORKERS}")
     print()
 
-    # Qwen3 VL 8B Instruct
+    # Qwen3 8B
     llm_config = {
         "config_list": [{
             "model": "qwen/qwen3-8b",
@@ -230,176 +426,57 @@ def run_single_category(json_path, category, target_user=None):
         "cache_seed": None,
     }
 
-    for user in selected_users:
-        questions = all_questions_dict[user]
-        if per_user_limit:
-            questions = questions[:per_user_limit]
+    results = {}
 
-        dialogue_history_agent = AssistantAgent(
-            name=f"Dialogue_History_{user}_agent",
-            llm_config=llm_config,
-            system_message=get_dialogue_history_prompt(user),
-        )
+    if len(selected_users) == 0:
+        print("No users to process.")
+        return results
 
-        recommend_agent = AssistantAgent(
-            name=f"Recommender_{user}_agent",
-            llm_config=llm_config,
-            system_message=get_recommender_prompt(user),
-        )
+    # 使用线程池并行处理用户
+    print(f"\n{'='*80}")
+    print(f"Starting parallel processing with {NUM_WORKERS} workers...")
+    print(f"{'='*80}\n")
 
-        reason_agent = AssistantAgent(
-            name=f"Reasoner_{user}_agent",
-            llm_config=llm_config,
-            system_message=get_reasoner_prompt(user),
-        )
+    with ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
+        # 提交所有用户的任务
+        futures = {
+            executor.submit(
+                process_single_user,
+                user,
+                all_questions_dict[user],
+                category,
+                llm_config,
+                per_user_limit
+            ): user
+            for user in selected_users
+        }
 
-        reply_agent = AssistantAgent(
-            name=f"Reply_{user}_agent",
-            llm_config=llm_config,
-            system_message=get_reply_prompt(),
-        )
+        # 收集结果
+        completed_count = 0
+        total_count = len(futures)
 
-        # Reply agent no longer needs tool registration
-        # It analyzes Dialogue History agent's output directly for conversation context
+        for future in as_completed(futures):
+            user = futures[future]
+            completed_count += 1
+            try:
+                result = future.result()
+                results[user] = result
+                print(f"\n[PROGRESS] {completed_count}/{total_count} users completed. Latest: {user}")
+            except Exception as e:
+                print(f"\n[ERROR] User {user} failed with exception: {e}")
+                import traceback
+                traceback.print_exc()
 
-        user_proxy_agent = UserProxyAgent(
-            name=f"User_{user}_proxy_agent",
-            human_input_mode="NEVER",
-            code_execution_config=False,
-        )
-
-        # Create wrapper for dialogue_history_agent
-        def make_dh_tool_wrapper(user_id: str, llm_cfg: dict):
-            def wrapper(current_query: str):
-                return rag_search_for_dialogue_history_agent(
-                    user_name=user_id,
-                    current_query=current_query,
-                    llm_config=llm_cfg
-                )
-            return wrapper
-
-        dh_wrapper = make_dh_tool_wrapper(user, llm_config)
-
-        dialogue_history_agent.register_for_llm(
-            name="rag_search_for_dialogue_history_agent",
-            description=(
-                "Retrieve relevant user dialogue history and preference records from the vector database. "
-                "Use it to infer user interests, habits, or preference. "
-                "Only requires 'current_query' parameter (user_name is automatically provided)."
-            ),
-        )(dh_wrapper)
-
-        dialogue_history_agent.register_for_execution(
-            name="rag_search_for_dialogue_history_agent"
-        )(dh_wrapper)
-
-        # Create wrapper for recommend_agent - USE MULTIMODAL VERSION
-        def make_rec_tool_wrapper(user_id: str):
-            def wrapper(user_query: str):
-                return rag_search_for_recommend_agent_multimodal(  # MULTIMODAL VERSION
-                    user_name=user_id,
-                    user_query=user_query
-                )
-            return wrapper
-
-        rec_wrapper = make_rec_tool_wrapper(user)
-
-        recommend_agent.register_for_llm(
-            name="rag_search_for_recommend_agent",
-            description=(
-                "Search the vector database for product, item, or knowledge information relevant to the user's query. "
-                "Uses multimodal fusion (metadata + reviews + image captions) for personalized recommendations. "
-                "Only requires 'user_query' parameter (user_name is automatically provided)."
-            ),
-        )(rec_wrapper)
-
-        recommend_agent.register_for_execution(
-            name="rag_search_for_recommend_agent"
-        )(rec_wrapper)
-
-        results[user] = []
-        user_history = []
-
-        print(f"\n{'='*80}")
-        print(f"Processing User: {user}")
-        print(f"Total Questions: {len(questions)}")
-        print(f"{'='*80}\n")
-
-        for i, q in enumerate(questions, start=1):
-            print(f"\n{'-'*80}")
-            print(f"[ROUND {i}/{len(questions)}] Question: {q}")
-            print(f"{'-'*80}\n")
-
-            groupchat = GroupChat(
-                agents=[user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent, reply_agent],
-                messages=[],
-                max_round=25,
-                speaker_selection_method=make_simple_flow(user_proxy_agent, dialogue_history_agent, recommend_agent, reason_agent, reply_agent)
-            )
-
-            manager = GroupChatManager(groupchat=groupchat, llm_config=llm_config)
-
-            save_chat_history(f"[USER_QUESTION_{i}] [{user_proxy_agent.name}] {q}", user)
-            user_proxy_agent.initiate_chat(manager, message=q)
-
-            new_messages = groupchat.messages
-
-            for idx, msg in enumerate(new_messages):
-                if not isinstance(msg, dict):
-                    continue
-                msg_name = msg.get("name", "")
-                msg_role = msg.get("role", "")
-                msg_content = msg.get("content", "")
-
-                if msg_role in ("tool", "function"):
-                    continue
-                if not msg_content or str(msg_content).strip() in ("", "None"):
-                    continue
-                if msg_name == user_proxy_agent.name:
-                    continue
-
-                if msg_name in [dialogue_history_agent.name, recommend_agent.name, reason_agent.name, reply_agent.name]:
-                    append_agent_message(msg_content, "assistant", msg_name, user)
-
-            user_history.extend(new_messages)
-            print(f"\n[ROUND {i} COMPLETED]\n")
-
-        results[user] = user_history
-
-        print(f"\n{'='*80}")
-        print(f"Completed User: {user}")
-        print(f"Total Rounds: {len(questions)}")
-        print(f"{'='*80}\n")
-
-        # Export dialogues for evaluation - USE MULTIMODAL OUTPUT DIRECTORY
-        eval_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        eval_dir = Path(f"./multimodal_dialogues_output/{category}")
-        eval_dir.mkdir(parents=True, exist_ok=True)
-        eval_output_path = eval_dir / f"multimodal_rag_dialogues_{user}_{eval_timestamp}.json"
-
-        # Check if export succeeded
-        export_result = export_dialogues_for_eval(user, output_path=str(eval_output_path))
-        if export_result is None:
-            print(f"[WARNING] Failed to export dialogues for user {user}")
-        else:
-            print(f"[SUCCESS] Exported dialogues to: {export_result}")
-
-        # Backup chat_history.jsonl before clearing
-        up = _user_paths(user)
-        if up["chat_history"].exists():
-            backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_path = eval_dir / f"{category}_{user}_{backup_timestamp}.jsonl"
-            shutil.copy2(up["chat_history"], backup_path)
-            print(f"[BACKUP] Chat history saved to: {backup_path}")
-
-        # Clear user storage after each user completes
-        clear_user_storage()
+    print(f"\n{'='*80}")
+    print(f"All users completed: {len(results)}/{len(selected_users)}")
+    print(f"{'='*80}\n")
 
     return results
 
+
 def main():
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Multimodal RAG Agent for Shopping Recommendations (Image + Text)")
+    parser = argparse.ArgumentParser(description="Multimodal RAG Agent for Shopping Recommendations (Image + Text) - Multi-threaded")
     parser.add_argument(
         "--all",
         action="store_true",
@@ -434,9 +511,6 @@ def main():
     load_dotenv()
     assert os.getenv("OPENROUTER_API_KEY"), "Missing OPENROUTER_API_KEY in .env"
 
-    # Clear user storage at script start to avoid cross-category conflicts
-    clear_user_storage()
-
     # Setup logging
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_dir = Path("./logs")
@@ -451,6 +525,7 @@ def main():
     print(f"{'='*80}")
     print(f"Multimodal Agent Workflow Execution Started")
     print(f"RAG Mode: MULTIMODAL (metadata + review + caption)")
+    print(f"Parallel Workers: {NUM_WORKERS}")
     print(f"Timestamp: {ts}")
     print(f"Log file: {log_file}")
     print(f"{'='*80}\n")
@@ -509,6 +584,8 @@ def main():
                 run_single_category(qf, category)
             except Exception as e:
                 print(f"Error processing category {category}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
 
         print(f"\n{'='*80}")
