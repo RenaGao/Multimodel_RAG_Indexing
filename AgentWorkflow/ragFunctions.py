@@ -423,6 +423,45 @@ def _append_round_embedding(user_name: str, query: str, round_id: str, round_num
     with up["round_metadata"].open("wb") as f:
         pickle.dump(metadata, f)
 
+
+def _append_round_embedding_openrouter(user_name: str, query: str, round_id: str, round_number: int):
+    """
+    Append a new query embedding to user's embedding matrix using OpenRouter API.
+    OpenRouter version - no local model loading.
+    """
+    up = _user_paths(user_name)
+
+    # Use OpenRouter API to generate embedding
+    embedder = OpenRouterEmbedder()
+    query_emb = embedder.encode([query], normalize_embeddings=True)[0]
+
+    # Load existing embeddings or create new
+    existing_embs, metadata = _load_round_embeddings(user_name)
+
+    if existing_embs is None:
+        # First round
+        new_embs = query_emb.reshape(1, -1)
+        metadata = {
+            "round_ids": [round_id],
+            "round_number_to_idx": {round_number: 0},
+            "embedding_dim": query_emb.shape[0],
+            "model": "qwen/qwen3-embedding-8b (OpenRouter)",
+            "last_updated": _now()
+        }
+    else:
+        # Append to existing
+        new_embs = np.vstack([existing_embs, query_emb.reshape(1, -1)])
+        metadata["round_ids"].append(round_id)
+        metadata["round_number_to_idx"][round_number] = len(existing_embs)
+        metadata["last_updated"] = _now()
+
+    # Save
+    with up["round_embeddings"].open("wb") as f:
+        pickle.dump(new_embs, f)
+    with up["round_metadata"].open("wb") as f:
+        pickle.dump(metadata, f)
+
+
 def save_chat_history(chat_history: str, user_name: str) -> bool:
     """
     Save chat history with round-based storage and query embeddings.
@@ -512,6 +551,94 @@ def save_chat_history(chat_history: str, user_name: str) -> bool:
     except Exception as e:
         print(f"[SAVE ERROR] {e}")
         return False
+
+
+def save_chat_history_openrouter(chat_history: str, user_name: str) -> bool:
+    """
+    Save chat history with round-based storage and query embeddings.
+    OpenRouter version - uses OpenRouter API for embeddings.
+    Detects [USER_QUESTION_N] markers to identify new rounds.
+    """
+    try:
+        up = _user_paths(user_name)
+
+        # Check if this is a user question (new round start)
+        import re
+        user_question_match = re.match(r'\[USER_QUESTION_(\d+)\]\s+\[([^\]]+)\]\s+(.*)', chat_history)
+
+        if user_question_match:
+            # This is a new round starting
+            round_number = int(user_question_match.group(1))
+            agent_name = user_question_match.group(2)
+            user_query = user_question_match.group(3)
+
+            round_id = f"round_{round_number:03d}"
+            timestamp = _now()
+
+            # Initialize round data
+            round_data = {
+                "round_id": round_id,
+                "round_number": round_number,
+                "timestamp": timestamp,
+                "user_query": user_query,
+                "dataset_category": get_dataset_category(),
+                "conversation": [
+                    {
+                        "agent": agent_name,
+                        "role": "user",
+                        "content": user_query,
+                        "timestamp": timestamp
+                    }
+                ]
+            }
+
+            # Save round data
+            with up["chat_history"].open("a", encoding="utf-8") as f:
+                f.write(json.dumps(round_data, ensure_ascii=False) + "\n")
+
+            # Generate and save query embedding using OpenRouter API
+            _append_round_embedding_openrouter(user_name, user_query, round_id, round_number)
+
+            print(f"[SAVE] Round {round_number} started for user={user_name}")
+
+        else:
+            # This is a message within an existing round
+            role_match = re.match(r'\[(\w+)\]\s+(.*)', chat_history)
+
+            if role_match:
+                role = role_match.group(1).lower()
+                content = role_match.group(2)
+            else:
+                role = "assistant"
+                content = chat_history
+
+            # Load existing rounds to append to the latest one
+            if up["chat_history"].exists():
+                all_rounds = list(_iter_jsonl(up["chat_history"]))
+                if all_rounds:
+                    last_round = all_rounds[-1]
+                    last_round["conversation"].append({
+                        "role": role,
+                        "content": content,
+                        "timestamp": _now()
+                    })
+                    last_round["metadata"]["round_status"] = "in_progress"
+
+                    with up["chat_history"].open("w", encoding="utf-8") as f:
+                        for i, r in enumerate(all_rounds):
+                            if i == len(all_rounds) - 1:
+                                f.write(json.dumps(last_round, ensure_ascii=False) + "\n")
+                            else:
+                                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+                    print(f"[SAVE] Message added to round {last_round['round_number']} for user={user_name}")
+
+        return True
+
+    except Exception as e:
+        print(f"[SAVE ERROR] {e}")
+        return False
+
 
 def append_agent_message(content: str, role: str, agent_name: str, user_name: str) -> bool:
     """
@@ -829,17 +956,17 @@ def rag_search_for_dialogue_history_agent(user_name: str, current_query: str = N
     }
 
 
-# Dialogue History Agent (Multimodal version - uses OpenRouter API)
-def rag_search_for_dialogue_history_agent_multimodal(
+# Dialogue History Agent (OpenRouter version - uses OpenRouter API)
+def rag_search_for_dialogue_history_agent_openrouter(
     user_name: str,
     current_query: str = None,
     llm_config: dict = None
 ) -> dict:
     """
-    Multimodal version: uses OpenRouter API instead of local SentenceTransformer.
+    OpenRouter version: uses OpenRouter API instead of local SentenceTransformer.
     Search for relevant dialogue history rounds using semantic similarity.
     """
-    print(f"[DEBUG] rag_search_for_dialogue_history_agent_multimodal called")
+    print(f"[DEBUG] rag_search_for_dialogue_history_agent_openrouter called")
     print(f"[DEBUG]   user_name: {user_name}")
     print(f"[DEBUG]   current_query: {current_query}")
 
@@ -1192,10 +1319,10 @@ class _MultimodalIndex:
         return ""
 
 
-def _select_relevant_reviews_multimodal(user_query: str, user_name: str, top_k: int = 5) -> List[Dict]:
+def _select_relevant_reviews_openrouter(user_query: str, user_name: str, top_k: int = 5) -> List[Dict]:
     """
     Select top-k most relevant reviews based on query similarity using OpenRouter API.
-    Multimodal version using _MultimodalIndex.
+    OpenRouter version using _MultimodalIndex.
     """
     # Load user review embeddings
     review_embs, metadata = _load_user_review_embeddings(user_name)
@@ -1310,7 +1437,7 @@ def rag_search_for_recommend_agent_multimodal(user_name: str, user_query: str, t
             break
 
     # 6) Select relevant user reviews using multimodal index
-    selected_reviews = _select_relevant_reviews_multimodal(user_query, user_name, top_k=5)
+    selected_reviews = _select_relevant_reviews_openrouter(user_query, user_name, top_k=5)
 
     # 7) Update chat history with recommendations
     up = _user_paths(user_name)

@@ -13,9 +13,9 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ragFunctions import (
-    save_chat_history,
-    rag_search_for_recommend_agent_multimodal,  # Use multimodal version
-    rag_search_for_dialogue_history_agent_multimodal,  # Use multimodal version
+    save_chat_history_openrouter,  # Use OpenRouter API version
+    rag_search_for_recommend_agent_multimodal,  # Use multimodal version (caption)
+    rag_search_for_dialogue_history_agent_openrouter,  # Use OpenRouter API version
     append_agent_message,
     save_round_summary,
     load_previous_round_summaries,
@@ -253,10 +253,10 @@ def process_single_user(user: str, questions: list, category: str, llm_config: d
         code_execution_config=False,
     )
 
-    # Create wrapper for dialogue_history_agent - USE MULTIMODAL VERSION
+    # Create wrapper for dialogue_history_agent - USE OPENROUTER VERSION
     def make_dh_tool_wrapper(user_id: str, llm_cfg: dict):
         def wrapper(current_query: str):
-            return rag_search_for_dialogue_history_agent_multimodal(
+            return rag_search_for_dialogue_history_agent_openrouter(
                 user_name=user_id,
                 current_query=current_query,
                 llm_config=llm_cfg
@@ -324,7 +324,7 @@ def process_single_user(user: str, questions: list, category: str, llm_config: d
 
         manager = GroupChatManager(groupchat=groupchat, llm_config=llm_config)
 
-        save_chat_history(f"[USER_QUESTION_{i}] [{user_proxy_agent.name}] {q}", user)
+        save_chat_history_openrouter(f"[USER_QUESTION_{i}] [{user_proxy_agent.name}] {q}", user)
         user_proxy_agent.initiate_chat(manager, message=q)
 
         new_messages = groupchat.messages
