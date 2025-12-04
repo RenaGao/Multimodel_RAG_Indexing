@@ -12,6 +12,7 @@ from buildRag_old import build_user_index_for
 import torch
 import os
 import threading
+from openai import OpenAI  # For OpenRouterEmbedder (multimodal RAG)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # Global model cache with thread-safe access
@@ -928,5 +929,297 @@ def rag_search_for_recommend_agent(user_name: str, user_query: str, top_k: int =
         "recommendations": recs,
         "relevant_user_reviews": selected_reviews,
         "review_selection_method": "dynamic_similarity",
+        "ts": _now(),
+    }
+
+
+# =============================================================================
+# Multimodal RAG Components (metadata + review + caption)
+# =============================================================================
+
+class OpenRouterEmbedder:
+    """
+    Lightweight embedder for runtime query encoding via OpenRouter API.
+    Uses Qwen3-Embedding-8B model (4096 dimensions).
+    Thread-safe and stateless - suitable for concurrent requests.
+    """
+
+    def __init__(self):
+        api_key = os.environ.get("OPENROUTER_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "OPENROUTER_API_KEY environment variable not set. "
+                "Please set it with your OpenRouter API key."
+            )
+
+        self.client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key
+        )
+        self.model_name = "qwen/qwen3-embedding-8b"
+        self.embedding_dim = 4096
+        print(f"[OpenRouterEmbedder] Initialized with model: {self.model_name}")
+
+    def encode(self, texts: List[str], normalize_embeddings: bool = True) -> np.ndarray:
+        """
+        Encode texts to embeddings via OpenRouter API.
+
+        Args:
+            texts: List of texts to encode
+            normalize_embeddings: Whether to L2-normalize the embeddings
+
+        Returns:
+            numpy array of embeddings, shape (len(texts), 4096)
+        """
+        if not texts:
+            return np.array([], dtype=np.float32).reshape(0, self.embedding_dim)
+
+        try:
+            response = self.client.embeddings.create(
+                model=self.model_name,
+                input=texts,
+                timeout=60.0
+            )
+            embeddings = np.array(
+                [item.embedding for item in response.data],
+                dtype=np.float32
+            )
+
+            if normalize_embeddings:
+                norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+                embeddings = embeddings / (norms + 1e-8)
+
+            return embeddings
+
+        except Exception as e:
+            print(f"[OpenRouterEmbedder ERROR] Failed to encode: {e}")
+            raise
+
+
+class _MultimodalIndex:
+    """
+    Enhanced index class with caption support and OpenRouter API encoding.
+    Loads metadata, review, and caption embeddings for multimodal RAG.
+    """
+
+    def __init__(self, index_dir: Path):
+        self.dir = index_dir
+        self.meta = index_dir / "meta.pkl"
+        self.mat = index_dir / "matrix.pkl"
+        self.review_mat = index_dir / "review_matrix.pkl"
+        self.caption_mat = index_dir / "caption_matrix.pkl"
+        self.caption_texts_path = index_dir / "caption_texts.pkl"
+
+        self.docs: List[Dict[str, Any]] = []
+        self.texts: List[str] = []
+        self.caption_texts: List[str] = []
+        self.embedder: Optional[OpenRouterEmbedder] = None
+
+        self.matrix: Optional[np.ndarray] = None
+        self.review_matrix: Optional[np.ndarray] = None
+        self.caption_matrix: Optional[np.ndarray] = None
+
+    def exists(self) -> bool:
+        return self.meta.exists() and self.mat.exists()
+
+    def load(self):
+        if not self.exists():
+            raise RuntimeError(f"Index not found under {self.dir}")
+
+        # Load metadata (docs and texts)
+        d = pickle.load(self.meta.open("rb"))
+        self.docs = d["docs"]
+        self.texts = d["texts"]
+
+        # Initialize OpenRouter embedder (lightweight, no GPU loading)
+        self.embedder = OpenRouterEmbedder()
+        print(f"[_MultimodalIndex] OpenRouter embedder initialized")
+
+        # Load metadata embedding matrix
+        self.matrix = pickle.load(self.mat.open("rb"))
+        print(f"[_MultimodalIndex] Metadata matrix loaded: {self.matrix.shape}")
+
+        # Load review matrix if available
+        if self.review_mat.exists():
+            self.review_matrix = pickle.load(self.review_mat.open("rb"))
+            print(f"[_MultimodalIndex] Review matrix loaded: {self.review_matrix.shape}")
+        else:
+            print(f"[_MultimodalIndex] No review_matrix.pkl found")
+
+        # Load caption matrix and texts if available
+        if self.caption_mat.exists():
+            self.caption_matrix = pickle.load(self.caption_mat.open("rb"))
+            print(f"[_MultimodalIndex] Caption matrix loaded: {self.caption_matrix.shape}")
+        else:
+            print(f"[_MultimodalIndex] No caption_matrix.pkl found")
+
+        if self.caption_texts_path.exists():
+            self.caption_texts = pickle.load(self.caption_texts_path.open("rb"))
+            print(f"[_MultimodalIndex] Caption texts loaded: {len(self.caption_texts)} captions")
+        else:
+            print(f"[_MultimodalIndex] No caption_texts.pkl found")
+
+    def search(self, query: str, k: int = 10) -> List[Tuple[int, float]]:
+        """Basic search using metadata embeddings only."""
+        if not query.strip() or self.matrix is None:
+            return []
+        qv = self.embedder.encode([query], normalize_embeddings=True)
+        sims = _cosine(qv, self.matrix).ravel()
+        order = sims.argsort()[::-1]
+        return [(int(i), float(sims[i])) for i in order[:max(1, k)]]
+
+    def doc(self, i: int) -> Dict[str, Any]:
+        """Get document by index."""
+        return self.docs[i]
+
+    def get_caption(self, idx: int) -> str:
+        """Get caption text for an item by index."""
+        if self.caption_texts and 0 <= idx < len(self.caption_texts):
+            return self.caption_texts[idx]
+        return ""
+
+
+def _select_relevant_reviews_multimodal(user_query: str, user_name: str, top_k: int = 5) -> List[Dict]:
+    """
+    Select top-k most relevant reviews based on query similarity using OpenRouter API.
+    Multimodal version using _MultimodalIndex.
+    """
+    # Load user review embeddings
+    review_embs, metadata = _load_user_review_embeddings(user_name)
+
+    if review_embs is None:
+        print(f"[SELECT_REVIEWS_MULTIMODAL] No review embeddings found for user {user_name}")
+        return []
+
+    # Load item index to use embedder
+    iidx_dir = item_index_dir()
+    iidx = _MultimodalIndex(iidx_dir)
+    iidx.load()
+
+    # Generate query embedding
+    query_emb = iidx.embedder.encode([user_query], normalize_embeddings=True)
+
+    # Calculate similarities
+    sims = _cosine(query_emb, review_embs).ravel()
+
+    # Get top-k indices
+    top_indices = sims.argsort()[::-1][:min(top_k, len(sims))]
+
+    # Extract top-k reviews
+    selected_reviews = []
+    for idx in top_indices:
+        review_data = metadata["reviews"][idx].copy()
+        review_data["similarity_score"] = float(sims[idx])
+        selected_reviews.append(review_data)
+
+    print(f"[SELECT_REVIEWS_MULTIMODAL] Selected {len(selected_reviews)} reviews based on query similarity")
+    if selected_reviews:
+        print(f"[SELECT_REVIEWS_MULTIMODAL] Top similarity score: {selected_reviews[0]['similarity_score']:.4f}")
+
+    return selected_reviews
+
+
+def rag_search_for_recommend_agent_multimodal(user_name: str, user_query: str, top_k: int = 5) -> dict:
+    """
+    Search for recommendations using triple-fusion scoring (metadata + review + caption).
+    Returns recommendations with caption text included.
+
+    Scoring formula: score = 0.33 * sim_metadata + 0.33 * sim_review + 0.33 * sim_caption
+    Fallback to dual or single fusion if some embeddings are missing.
+
+    Args:
+        user_name: User identifier
+        user_query: The user's search query
+        top_k: Number of recommendations to return
+
+    Returns:
+        dict with recommendations (including caption), fusion_info, and user reviews
+    """
+    # 1) Load Multimodal Item RAG index
+    iidx_dir = item_index_dir()
+    iidx = _MultimodalIndex(iidx_dir)
+    iidx.load()
+
+    # Validate all required embeddings are present
+    if iidx.matrix is None or iidx.embedder is None:
+        raise RuntimeError("Item index is not properly loaded (matrix/embedder is None).")
+    if iidx.review_matrix is None:
+        raise RuntimeError("Review embeddings (review_matrix.pkl) are required for multimodal RAG.")
+    if iidx.caption_matrix is None:
+        raise RuntimeError("Caption embeddings (caption_matrix.pkl) are required for multimodal RAG.")
+
+    # 2) Generate query embedding via OpenRouter API
+    q_text = (user_query or '').strip()
+    q_emb = iidx.embedder.encode([q_text], normalize_embeddings=True)
+
+    # 3) Compute similarities with all three embedding types
+    sim_metadata = _cosine(q_emb, iidx.matrix).ravel()
+    sim_review = _cosine(q_emb, iidx.review_matrix).ravel()
+    sim_caption = _cosine(q_emb, iidx.caption_matrix).ravel()
+
+    # 4) Triple fusion: 33% metadata + 33% review + 33% caption
+    score_final = 0.33 * sim_metadata + 0.33 * sim_review + 0.33 * sim_caption
+    fusion_info = {
+        "fusion_type": "triple",
+        "alpha_metadata": 0.33,
+        "beta_review": 0.33,
+        "gamma_caption": 0.33,
+    }
+    print(f"[MULTIMODAL_RAG] Using triple fusion: 0.33*meta + 0.33*review + 0.33*caption")
+
+    # 5) Rank and build recommendations with caption
+    order = score_final.argsort()[::-1]
+    candidates: List[Dict[str, Any]] = []
+
+    for idx in order:
+        d = iidx.doc(int(idx))
+        meta_text = (d.get("text") or "").strip()
+        caption = iidx.get_caption(int(idx))  # Get caption text
+
+        candidates.append({
+            "item_id": d.get("item_id"),
+            "title": d.get("title", ""),
+            "price": d.get("price", ""),
+            "brand": d.get("brand", ""),
+            "review": meta_text,
+            "caption": caption,  # Include caption in results
+            "score": round(float(score_final[idx]), 6),
+        })
+
+    # Deduplicate
+    seen, recs = set(), []
+    for r in candidates:
+        if r["item_id"] in seen:
+            continue
+        seen.add(r["item_id"])
+        recs.append(r)
+        if len(recs) >= top_k:
+            break
+
+    # 6) Select relevant user reviews using multimodal index
+    selected_reviews = _select_relevant_reviews_multimodal(user_query, user_name, top_k=5)
+
+    # 7) Update chat history with recommendations
+    up = _user_paths(user_name)
+    if up["chat_history"].exists():
+        all_rounds = list(_iter_jsonl(up["chat_history"]))
+        if all_rounds:
+            last_round = all_rounds[-1]
+            last_round["recommendations"] = recs
+            last_round["fusion_info"] = fusion_info
+
+            with up["chat_history"].open("w", encoding="utf-8") as f:
+                for i, r in enumerate(all_rounds):
+                    if i == len(all_rounds) - 1:
+                        f.write(json.dumps(last_round, ensure_ascii=False) + "\n")
+                    else:
+                        f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+    return {
+        "dataset_category": get_dataset_category(),
+        "recommendations": recs,
+        "relevant_user_reviews": selected_reviews,
+        "review_selection_method": "dynamic_similarity_multimodal",
+        "fusion_info": fusion_info,
         "ts": _now(),
     }
