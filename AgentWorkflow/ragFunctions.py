@@ -963,6 +963,7 @@ class OpenRouterEmbedder:
     def encode(self, texts: List[str], normalize_embeddings: bool = True) -> np.ndarray:
         """
         Encode texts to embeddings via OpenRouter API.
+        Includes retry logic with exponential backoff for transient errors.
 
         Args:
             texts: List of texts to encode
@@ -971,29 +972,42 @@ class OpenRouterEmbedder:
         Returns:
             numpy array of embeddings, shape (len(texts), 4096)
         """
+        import time
+
         if not texts:
             return np.array([], dtype=np.float32).reshape(0, self.embedding_dim)
 
-        try:
-            response = self.client.embeddings.create(
-                model=self.model_name,
-                input=texts,
-                timeout=60.0
-            )
-            embeddings = np.array(
-                [item.embedding for item in response.data],
-                dtype=np.float32
-            )
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = self.client.embeddings.create(
+                    model=self.model_name,
+                    input=texts,
+                    timeout=60.0
+                )
+                embeddings = np.array(
+                    [item.embedding for item in response.data],
+                    dtype=np.float32
+                )
 
-            if normalize_embeddings:
-                norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-                embeddings = embeddings / (norms + 1e-8)
+                if normalize_embeddings:
+                    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+                    embeddings = embeddings / (norms + 1e-8)
 
-            return embeddings
+                return embeddings
 
-        except Exception as e:
-            print(f"[OpenRouterEmbedder ERROR] Failed to encode: {e}")
-            raise
+            except Exception as e:
+                error_str = str(e)
+                # 检查是否为可重试的错误 (503, 502, 429)
+                if any(code in error_str for code in ["503", "502", "429"]):
+                    if attempt < max_retries - 1:
+                        wait_time = 2 ** (attempt + 1)  # 指数退避: 2, 4, 8, 16, 32 秒
+                        print(f"[RETRY] API error ({error_str[:80]}...), waiting {wait_time}s... ({attempt+1}/{max_retries})")
+                        time.sleep(wait_time)
+                        continue
+                # 不可重试的错误或已耗尽重试次数
+                print(f"[OpenRouterEmbedder ERROR] Failed to encode: {e}")
+                raise
 
 
 class _MultimodalIndex:

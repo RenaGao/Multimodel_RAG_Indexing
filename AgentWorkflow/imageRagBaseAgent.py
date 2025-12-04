@@ -26,7 +26,7 @@ from ragFunctions import (
 from agent_prompts import get_dialogue_history_prompt, get_recommender_prompt, get_reasoner_prompt, get_reply_prompt
 
 # 多线程配置
-NUM_WORKERS = 10  # 同时处理 10 个用户
+NUM_WORKERS = 5  # 同时处理 5 个用户 (减少并发以避免 API 503 错误)
 
 # 线程安全的打印锁
 _print_lock = threading.Lock()
