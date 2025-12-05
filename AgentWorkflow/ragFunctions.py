@@ -1463,3 +1463,111 @@ def rag_search_for_recommend_agent_multimodal(user_name: str, user_query: str, t
         "fusion_info": fusion_info,
         "ts": _now(),
     }
+
+
+def rag_search_for_recommend_agent_multimodal_no_user_review(user_name: str, user_query: str, top_k: int = 5) -> dict:
+    """
+    [ABLATION STUDY] Search for recommendations using triple-fusion scoring (metadata + review + caption).
+    Same as rag_search_for_recommend_agent_multimodal but WITHOUT user review personalization.
+
+    This version:
+    - Keeps triple fusion for item retrieval
+    - Does NOT call _select_relevant_reviews_openrouter()
+    - Does NOT return relevant_user_reviews
+
+    Args:
+        user_name: User identifier
+        user_query: The user's search query
+        top_k: Number of recommendations to return
+
+    Returns:
+        dict with recommendations (including caption) and fusion_info, but NO user reviews
+    """
+    # 1) Load Multimodal Item RAG index
+    iidx_dir = item_index_dir()
+    iidx = _MultimodalIndex(iidx_dir)
+    iidx.load()
+
+    # Validate all required embeddings are present
+    if iidx.matrix is None or iidx.embedder is None:
+        raise RuntimeError("Item index is not properly loaded (matrix/embedder is None).")
+    if iidx.review_matrix is None:
+        raise RuntimeError("Review embeddings (review_matrix.pkl) are required for multimodal RAG.")
+    if iidx.caption_matrix is None:
+        raise RuntimeError("Caption embeddings (caption_matrix.pkl) are required for multimodal RAG.")
+
+    # 2) Generate query embedding
+    q_text = (user_query or '').strip()
+    q_emb = iidx.embedder.encode([q_text], normalize_embeddings=True)
+
+    # 3) Compute similarities with all three embedding types
+    sim_metadata = _cosine(q_emb, iidx.matrix).ravel()
+    sim_review = _cosine(q_emb, iidx.review_matrix).ravel()
+    sim_caption = _cosine(q_emb, iidx.caption_matrix).ravel()
+
+    # 4) Triple fusion: 33% metadata + 33% review + 33% caption
+    score_final = 0.33 * sim_metadata + 0.33 * sim_review + 0.33 * sim_caption
+    fusion_info = {
+        "fusion_type": "triple_no_user_review",
+        "alpha_metadata": 0.33,
+        "beta_review": 0.33,
+        "gamma_caption": 0.33,
+        "ablation": "no_user_review_personalization",
+    }
+    print(f"[ABLATION_RAG] Using triple fusion WITHOUT user review personalization")
+
+    # 5) Rank and build recommendations with caption
+    order = score_final.argsort()[::-1]
+    candidates: List[Dict[str, Any]] = []
+
+    for idx in order:
+        d = iidx.doc(int(idx))
+        meta_text = (d.get("text") or "").strip()
+        caption = iidx.get_caption(int(idx))
+
+        candidates.append({
+            "item_id": d.get("item_id"),
+            "title": d.get("title", ""),
+            "price": d.get("price", ""),
+            "brand": d.get("brand", ""),
+            "review": meta_text,
+            "caption": caption,
+            "score": round(float(score_final[idx]), 6),
+        })
+
+    # Deduplicate
+    seen, recs = set(), []
+    for r in candidates:
+        if r["item_id"] in seen:
+            continue
+        seen.add(r["item_id"])
+        recs.append(r)
+        if len(recs) >= top_k:
+            break
+
+    # [ABLATION] Skip user review selection - no personalization
+    # selected_reviews = _select_relevant_reviews_openrouter(user_query, user_name, top_k=5)
+
+    # 6) Update chat history with recommendations
+    up = _user_paths(user_name)
+    if up["chat_history"].exists():
+        all_rounds = list(_iter_jsonl(up["chat_history"]))
+        if all_rounds:
+            last_round = all_rounds[-1]
+            last_round["recommendations"] = recs
+            last_round["fusion_info"] = fusion_info
+
+            with up["chat_history"].open("w", encoding="utf-8") as f:
+                for i, r in enumerate(all_rounds):
+                    if i == len(all_rounds) - 1:
+                        f.write(json.dumps(last_round, ensure_ascii=False) + "\n")
+                    else:
+                        f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+    return {
+        "dataset_category": get_dataset_category(),
+        "recommendations": recs,
+        # [ABLATION] No relevant_user_reviews
+        "fusion_info": fusion_info,
+        "ts": _now(),
+    }
