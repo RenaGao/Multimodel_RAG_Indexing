@@ -97,12 +97,12 @@ def find_category_file(category_name, questions_dir="../questions_v3"):
 def get_completed_users(category):
     """Get set of user IDs that have completed output files."""
     # [ABLATION] Use different output directory
-    output_dir = Path(f"./ablation_no_user_review_output/{category}")
+    output_dir = Path(f"./multimdoal_no_user_review_output/{category}")
     if not output_dir.exists():
         return set()
 
     completed = set()
-    for f in output_dir.glob("ablation_no_review_dialogues_*.json"):
+    for f in output_dir.glob("multimodal_no_user_review_dialogues_*.json"):
         stem = f.stem
         parts = stem.split("_")
         dialogues_idx = parts.index("dialogues") if "dialogues" in parts else -1
@@ -334,9 +334,9 @@ def process_single_user(user: str, questions: list, category: str, llm_config: d
 
     # [ABLATION] Export to different directory
     eval_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    eval_dir = Path(f"./ablation_no_user_review_output/{category}")
+    eval_dir = Path(f"./multimdoal_no_user_review_output/{category}")
     eval_dir.mkdir(parents=True, exist_ok=True)
-    eval_output_path = eval_dir / f"ablation_no_review_dialogues_{user}_{eval_timestamp}.json"
+    eval_output_path = eval_dir / f"multimodal_no_user_review_dialogues_{user}_{eval_timestamp}.json"
 
     export_result = export_dialogues_for_eval(user, output_path=str(eval_output_path))
     if export_result is None:
@@ -579,7 +579,7 @@ def main():
 
         print(f"\n{'='*80}")
         print(f"[ABLATION] Category Completed: {category}")
-        print(f"Output saved to: ./ablation_no_user_review_output/{category}/")
+        print(f"Output saved to: ./multimdoal_no_user_review_output/{category}/")
         print(f"Log saved to: {log_file}")
         print(f"{'='*80}\n")
 
@@ -605,7 +605,7 @@ def main():
 
         print(f"\n{'='*80}")
         print(f"[ABLATION] Execution Completed")
-        print(f"Output saved to: ./ablation_no_user_review_output/{category}/")
+        print(f"Output saved to: ./multimdoal_no_user_review_output/{category}/")
         print(f"Log saved to: {log_file}")
         print(f"{'='*80}\n")
 
