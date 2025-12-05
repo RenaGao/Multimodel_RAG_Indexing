@@ -373,7 +373,7 @@ Examples:
     parser.add_argument(
         "--profiles-dir",
         type=str,
-        default=None,
+        default='./user_profiles',
         help="Directory containing user profile JSON files (optional)"
     )
     args = parser.parse_args()
