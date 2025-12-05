@@ -2,15 +2,18 @@
 One-time script to split eval_results by rag_enabled field.
 - baseline_eval/: rag_enabled = false
 - textrag_eval/: rag_enabled = true
+- textrag_vs_baseline_comparison/: paired comparison files
 """
 import json
 import os
 import glob
+import shutil
 
 # Hardcoded paths
 INPUT_DIR = "eval_results"
 BASELINE_DIR = os.path.join(INPUT_DIR, "baseline_eval")
 TEXTRAG_DIR = os.path.join(INPUT_DIR, "textrag_eval")
+PAIRED_DIR = os.path.join(INPUT_DIR, "textrag_vs_baseline_comparison")
 
 
 def main():
@@ -45,6 +48,16 @@ def main():
 
     print(f"\n📊 Total: baseline={total_baseline}, textrag={total_textrag}")
     print(f"💾 Saved to: {BASELINE_DIR}/ and {TEXTRAG_DIR}/")
+
+    # Copy paired comparison files to textrag_vs_baseline_comparison folder
+    os.makedirs(PAIRED_DIR, exist_ok=True)
+    paired_files = glob.glob(os.path.join(INPUT_DIR, "*_paired.json"))
+    for file_path in sorted(paired_files):
+        filename = os.path.basename(file_path)
+        shutil.copy(file_path, os.path.join(PAIRED_DIR, filename))
+        print(f"✓ Copied {filename} to textrag_vs_baseline_comparison/")
+
+    print(f"\n💾 Paired files saved to: {PAIRED_DIR}/")
 
 
 if __name__ == "__main__":
