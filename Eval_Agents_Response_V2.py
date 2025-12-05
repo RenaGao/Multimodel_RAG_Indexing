@@ -157,18 +157,16 @@ def get_user_profile(entry, loaded_profiles=None):
 def load_dialogues_from_category(category_dir):
     """
     Load all dialogues from a category directory.
-    Supports both .json and .jsonl files.
+    Only loads .json files (ignores .jsonl backup files).
 
     Returns:
         List of dialogue entries
     """
     dialogues = []
 
-    # Find all JSON and JSONL files
+    # Find all JSON files (ignore .jsonl backup files)
     json_files = glob.glob(os.path.join(category_dir, "*.json"))
-    jsonl_files = glob.glob(os.path.join(category_dir, "*.jsonl"))
 
-    # Load .json files
     for file_path in json_files:
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -176,17 +174,6 @@ def load_dialogues_from_category(category_dir):
             if isinstance(data, dict):
                 data = [data]
             dialogues.extend(data)
-        except Exception as e:
-            print(f"✗ Error loading {os.path.basename(file_path)}: {str(e)}")
-
-    # Load .jsonl files
-    for file_path in jsonl_files:
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        dialogues.append(json.loads(line))
         except Exception as e:
             print(f"✗ Error loading {os.path.basename(file_path)}: {str(e)}")
 
