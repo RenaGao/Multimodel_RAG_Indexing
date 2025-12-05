@@ -4,6 +4,8 @@ evaluate_agent_aggregate_performance.py
 LLM-as-a-Judge scoring for Shopping Agents.
 Focus: WHOLE DIALOGUE AGGREGATE ASSESSMENT.
 Evaluates the Agent's cumulative responses, ignoring User quality.
+
+Supports flexible A vs B comparison (e.g., multimodal vs text-only, RAG vs baseline, etc.)
 """
 
 import json
@@ -25,6 +27,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BASELINE_DIR = os.path.join(BASE_DIR, "AgentWorkflow/baseline_dialogues_output")
 RAG_DIR = os.path.join(BASE_DIR, "AgentWorkflow/dialogues_output")
 PROFILES_DIR = os.path.join(BASE_DIR, "user_profiles")
+
+# Default labels for comparison (can be overridden via CLI)
+DEFAULT_LABEL_A = "baseline"
+DEFAULT_LABEL_B = "variant"
 
 load_dotenv()
 # -----------------------------------
@@ -154,6 +160,7 @@ def load_dialogues_from_directory(dir_path):
             # Add rag_enabled field to each dialogue
             for dialogue in dialogues:
                 dialogue["rag_enabled"] = is_rag
+                dialogue["variant"] = "rag" if is_rag else "baseline"  # Generic variant field
                 all_dialogues.append(dialogue)
 
             if is_baseline:
@@ -172,6 +179,67 @@ def load_dialogues_from_directory(dir_path):
     print(f"   - RAG enabled: {rag_count}")
 
     return all_dialogues
+
+
+def load_dialogues_from_dual_dirs(dir_a, dir_b, label_a, label_b):
+    """
+    Load dialogues from two separate directories with custom labels.
+
+    Args:
+        dir_a: First directory path
+        dir_b: Second directory path
+        label_a: Label for first directory (e.g., "text_only", "baseline")
+        label_b: Label for second directory (e.g., "multimodal", "rag")
+
+    Returns:
+        Tuple of (all_dialogues, count_a, count_b)
+    """
+    import glob
+
+    all_dialogues = []
+    count_a = 0
+    count_b = 0
+
+    for dir_path, label in [(dir_a, label_a), (dir_b, label_b)]:
+        if not os.path.isdir(dir_path):
+            raise ValueError(f"Directory not found: {dir_path}")
+
+        json_files = glob.glob(os.path.join(dir_path, "*.json"))
+
+        if not json_files:
+            print(f"⚠️  No JSON files found in: {dir_path}")
+            continue
+
+        for file_path in json_files:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    dialogues = json.load(f)
+
+                if isinstance(dialogues, dict):
+                    dialogues = [dialogues]
+
+                for dialogue in dialogues:
+                    dialogue["variant"] = label
+                    # Keep rag_enabled for backward compatibility
+                    dialogue["rag_enabled"] = (label == label_b)
+                    all_dialogues.append(dialogue)
+
+                if label == label_a:
+                    count_a += len(dialogues)
+                else:
+                    count_b += len(dialogues)
+
+                print(f"✓ Loaded {len(dialogues)} dialogues from {os.path.basename(file_path)} [{label}]")
+
+            except Exception as e:
+                print(f"✗ Error loading {os.path.basename(file_path)}: {str(e)}")
+                continue
+
+    print(f"\n📊 Total loaded: {len(all_dialogues)} dialogues")
+    print(f"   - {label_a}: {count_a}")
+    print(f"   - {label_b}: {count_b}")
+
+    return all_dialogues, count_a, count_b
 
 def format_full_dialogue(dialogue_history):
     """Formats the full back-and-forth for context."""
@@ -466,14 +534,119 @@ def evaluate_single_entry(entry, loaded_profiles=None):
             response_format={"type": "json_object"}
         )
         result_json = json.loads(response.choices[0].message.content)
-        
+
         return {
             "dialogue_id": entry.get("dialogue_id", "unknown"),
-            "rag_enabled": entry.get("rag_enabled", False),
+            "variant": entry.get("variant", "unknown"),
+            "rag_enabled": entry.get("rag_enabled", False),  # Backward compatibility
             "evaluation": result_json
         }
     except Exception as e:
-        return {"dialogue_id": entry.get("dialogue_id"), "error": str(e)}
+        return {"dialogue_id": entry.get("dialogue_id"), "variant": entry.get("variant"), "error": str(e)}
+
+def batch_evaluate_dual(dir_a, dir_b, label_a, label_b, output_dir, profiles_path=None):
+    """
+    Evaluate dialogues from two directories with custom labels.
+
+    Args:
+        dir_a: First directory path
+        dir_b: Second directory path
+        label_a: Label for first directory
+        label_b: Label for second directory
+        output_dir: Output directory for results
+        profiles_path: Optional path to user profiles JSON
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    print(f"\n{'='*60}")
+    print(f"🚀 DUAL DIRECTORY EVALUATION")
+    print(f"{'='*60}")
+    print(f"Directory A ({label_a}): {dir_a}")
+    print(f"Directory B ({label_b}): {dir_b}")
+    print(f"Output: {output_dir}")
+
+    # Load dialogues from both directories
+    dialogues, count_a, count_b = load_dialogues_from_dual_dirs(dir_a, dir_b, label_a, label_b)
+
+    if not dialogues:
+        print("❌ No dialogues loaded!")
+        return
+
+    # Load user profiles if provided
+    loaded_profiles = None
+    if profiles_path and os.path.exists(profiles_path):
+        with open(profiles_path, "r", encoding="utf-8") as f:
+            loaded_profiles = json.load(f)
+        print(f"✓ Loaded {len(loaded_profiles)} user profiles")
+
+    print(f"\n🚀 Evaluating {len(dialogues)} dialogues...")
+
+    # Evaluate with thread pool
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = [executor.submit(evaluate_single_entry, d, loaded_profiles) for d in dialogues]
+        for i, future in enumerate(concurrent.futures.as_completed(futures)):
+            results.append(future.result())
+            if (i + 1) % 10 == 0:
+                print(f"  Evaluated {i + 1}/{len(dialogues)} dialogues...")
+
+    # Save all results
+    all_results_path = os.path.join(output_dir, "all_eval_results.json")
+    with open(all_results_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+    print(f"\n💾 All results saved to: {all_results_path}")
+
+    # Print aggregate report
+    print_aggregate_report_dual(results, label_a, label_b)
+
+    # Generate and print paired comparison
+    paired_stats = generate_paired_comparison(results, label_a, label_b)
+    paired_output_path = os.path.join(output_dir, "paired_comparison.json")
+    print_paired_comparison_report(paired_stats, paired_output_path)
+
+    return results
+
+
+def print_aggregate_report_dual(results, label_a, label_b):
+    """Print aggregate report with custom labels."""
+    stats = {
+        label_a: {"consistency": [], "flaws": {}},
+        label_b: {"consistency": [], "flaws": {}}
+    }
+
+    for r in results:
+        if "error" in r:
+            continue
+        variant = r.get("variant", label_a)
+        if variant not in stats:
+            continue
+        eval_data = r["evaluation"]
+
+        stats[variant]["consistency"].append(eval_data["GlobalPersonalizationConsistency"]["score"])
+
+        for flaw in eval_data.get("Major_Flaws_Detected", []):
+            if flaw != "None":
+                stats[variant]["flaws"][flaw] = stats[variant]["flaws"].get(flaw, 0) + 1
+
+    print("\n📈 AGGREGATE PERFORMANCE REPORT 📈")
+    print("-----------------------------------")
+    for key in [label_a, label_b]:
+        cons = stats[key]["consistency"]
+        count = len(cons)
+        if count == 0:
+            continue
+
+        print(f"\nConfiguration: {key.upper()}")
+        print(f"  Samples: {count}")
+        print(f"  🧠 Global Consistency: {sum(cons)/count:.2f} / 5.0")
+
+        print("  🚩 Common Flaws (Whole Dialogue):")
+        sorted_flaws = sorted(stats[key]["flaws"].items(), key=lambda x: x[1], reverse=True)
+        if not sorted_flaws:
+            print("      - None detected!")
+        for f, c in sorted_flaws[:3]:
+            print(f"      - {f}: {c} dialogues")
+
 
 def batch_evaluate(input_path, output_path, profiles_path=None, paired_output_path=None):
     if not os.path.exists(input_path):
@@ -569,12 +742,14 @@ def print_aggregate_report(results):
         for f, c in sorted_flaws[:3]:
             print(f"      - {f}: {c} dialogues")
 
-def generate_paired_comparison(results):
+def generate_paired_comparison(results, label_a="baseline", label_b="rag"):
     """
-    Generate paired comparison between RAG and Baseline for same dialogue_id.
+    Generate paired comparison between two variants for same dialogue_id.
 
     Args:
         results: List of evaluation results
+        label_a: Label for first variant (default: "baseline")
+        label_b: Label for second variant (default: "rag")
 
     Returns:
         Dict with paired comparison statistics
@@ -585,59 +760,67 @@ def generate_paired_comparison(results):
         if "error" in r:
             continue
         dialogue_id = r.get("dialogue_id")
-        rag_enabled = r.get("rag_enabled", False)
+        variant = r.get("variant", "rag" if r.get("rag_enabled", False) else "baseline")
 
         if dialogue_id not in grouped:
             grouped[dialogue_id] = {}
 
-        key = "rag" if rag_enabled else "baseline"
-        grouped[dialogue_id][key] = r["evaluation"]
+        grouped[dialogue_id][variant] = r["evaluation"]
 
     # Calculate paired differences
     pairs = []
     for dialogue_id, data in grouped.items():
-        if "rag" in data and "baseline" in data:
-            rag_eval = data["rag"]
-            baseline_eval = data["baseline"]
+        if label_a in data and label_b in data:
+            eval_a = data[label_a]
+            eval_b = data[label_b]
 
             pair_diff = {
                 "dialogue_id": dialogue_id,
-                "consistency_diff": rag_eval["GlobalPersonalizationConsistency"]["score"] - baseline_eval["GlobalPersonalizationConsistency"]["score"],
-                "synthesis_diff": rag_eval["CumulativeInformationSynthesis"]["score"] - baseline_eval["CumulativeInformationSynthesis"]["score"],
-                "trajectory_diff": rag_eval["InteractionTrajectory"]["score"] - baseline_eval["InteractionTrajectory"]["score"],
-                "tone_diff": rag_eval["ToneConsistency"]["score"] - baseline_eval["ToneConsistency"]["score"],
-                "overall_diff": rag_eval.get("OverallScore", 0) - baseline_eval.get("OverallScore", 0),
-                "rag_scores": rag_eval,
-                "baseline_scores": baseline_eval
+                "consistency_diff": eval_b["GlobalPersonalizationConsistency"]["score"] - eval_a["GlobalPersonalizationConsistency"]["score"],
+                "synthesis_diff": eval_b["CumulativeInformationSynthesis"]["score"] - eval_a["CumulativeInformationSynthesis"]["score"],
+                "trajectory_diff": eval_b["InteractionTrajectory"]["score"] - eval_a["InteractionTrajectory"]["score"],
+                "tone_diff": eval_b["ToneConsistency"]["score"] - eval_a["ToneConsistency"]["score"],
+                "overall_diff": eval_b.get("OverallScore", 0) - eval_a.get("OverallScore", 0),
+                f"{label_b}_scores": eval_b,
+                f"{label_a}_scores": eval_a
             }
             pairs.append(pair_diff)
 
     if not pairs:
-        return {"error": "No paired dialogues found"}
+        return {"error": "No paired dialogues found", "label_a": label_a, "label_b": label_b}
 
-    # Calculate separate averages for RAG and Baseline
+    # Calculate separate averages for both variants
     n = len(pairs)
     stats = {
         "total_pairs": n,
-        "rag": {
-            "avg_consistency": sum(p["rag_scores"]["GlobalPersonalizationConsistency"]["score"] for p in pairs) / n,
-            "avg_synthesis": sum(p["rag_scores"]["CumulativeInformationSynthesis"]["score"] for p in pairs) / n,
-            "avg_trajectory": sum(p["rag_scores"]["InteractionTrajectory"]["score"] for p in pairs) / n,
-            "avg_tone": sum(p["rag_scores"]["ToneConsistency"]["score"] for p in pairs) / n,
-            "avg_overall": sum(p["rag_scores"].get("OverallScore", 0) for p in pairs) / n
+        "label_a": label_a,
+        "label_b": label_b,
+        label_b: {
+            "avg_consistency": sum(p[f"{label_b}_scores"]["GlobalPersonalizationConsistency"]["score"] for p in pairs) / n,
+            "avg_synthesis": sum(p[f"{label_b}_scores"]["CumulativeInformationSynthesis"]["score"] for p in pairs) / n,
+            "avg_trajectory": sum(p[f"{label_b}_scores"]["InteractionTrajectory"]["score"] for p in pairs) / n,
+            "avg_tone": sum(p[f"{label_b}_scores"]["ToneConsistency"]["score"] for p in pairs) / n,
+            "avg_overall": sum(p[f"{label_b}_scores"].get("OverallScore", 0) for p in pairs) / n
         },
-        "baseline": {
-            "avg_consistency": sum(p["baseline_scores"]["GlobalPersonalizationConsistency"]["score"] for p in pairs) / n,
-            "avg_synthesis": sum(p["baseline_scores"]["CumulativeInformationSynthesis"]["score"] for p in pairs) / n,
-            "avg_trajectory": sum(p["baseline_scores"]["InteractionTrajectory"]["score"] for p in pairs) / n,
-            "avg_tone": sum(p["baseline_scores"]["ToneConsistency"]["score"] for p in pairs) / n,
-            "avg_overall": sum(p["baseline_scores"].get("OverallScore", 0) for p in pairs) / n
+        label_a: {
+            "avg_consistency": sum(p[f"{label_a}_scores"]["GlobalPersonalizationConsistency"]["score"] for p in pairs) / n,
+            "avg_synthesis": sum(p[f"{label_a}_scores"]["CumulativeInformationSynthesis"]["score"] for p in pairs) / n,
+            "avg_trajectory": sum(p[f"{label_a}_scores"]["InteractionTrajectory"]["score"] for p in pairs) / n,
+            "avg_tone": sum(p[f"{label_a}_scores"]["ToneConsistency"]["score"] for p in pairs) / n,
+            "avg_overall": sum(p[f"{label_a}_scores"].get("OverallScore", 0) for p in pairs) / n
         },
-        "rag_better_count": sum(1 for p in pairs if p["overall_diff"] > 0.1),
-        "baseline_better_count": sum(1 for p in pairs if p["overall_diff"] < -0.1),
+        f"{label_b}_better_count": sum(1 for p in pairs if p["overall_diff"] > 0.1),
+        f"{label_a}_better_count": sum(1 for p in pairs if p["overall_diff"] < -0.1),
         "tie_count": sum(1 for p in pairs if abs(p["overall_diff"]) <= 0.1),
         "pairs": pairs
     }
+
+    # Keep backward compatible keys if using default labels
+    if label_a == "baseline" and label_b == "rag":
+        stats["rag_better_count"] = stats[f"{label_b}_better_count"]
+        stats["baseline_better_count"] = stats[f"{label_a}_better_count"]
+        stats["rag"] = stats[label_b]
+        stats["baseline"] = stats[label_a]
 
     return stats
 
@@ -653,48 +836,52 @@ def print_paired_comparison_report(paired_stats, output_path=None):
         print(f"\n⚠️  {paired_stats['error']}")
         return
 
+    # Get labels (with backward compatibility)
+    label_a = paired_stats.get("label_a", "baseline")
+    label_b = paired_stats.get("label_b", "rag")
+
     print("\n" + "="*60)
-    print("📊 PAIRED COMPARISON REPORT (RAG vs Baseline)")
+    print(f"📊 PAIRED COMPARISON REPORT ({label_b.upper()} vs {label_a.upper()})")
     print("="*60)
 
     total = paired_stats["total_pairs"]
     print(f"\n🔗 Total Paired Dialogues: {total}")
 
-    rag = paired_stats["rag"]
-    baseline = paired_stats["baseline"]
+    variant_b = paired_stats.get(label_b, paired_stats.get("rag", {}))
+    variant_a = paired_stats.get(label_a, paired_stats.get("baseline", {}))
 
-    print("\n📈 RAG Average Scores:")
-    print(f"   Global Consistency:     {rag['avg_consistency']:.2f}")
-    print(f"   Information Synthesis:  {rag['avg_synthesis']:.2f}")
-    print(f"   Interaction Trajectory: {rag['avg_trajectory']:.2f}")
-    print(f"   Tone Consistency:       {rag['avg_tone']:.2f}")
-    print(f"   Overall Score:          {rag['avg_overall']:.2f}")
+    print(f"\n📈 {label_b.upper()} Average Scores:")
+    print(f"   Global Consistency:     {variant_b['avg_consistency']:.2f}")
+    print(f"   Information Synthesis:  {variant_b['avg_synthesis']:.2f}")
+    print(f"   Interaction Trajectory: {variant_b['avg_trajectory']:.2f}")
+    print(f"   Tone Consistency:       {variant_b['avg_tone']:.2f}")
+    print(f"   Overall Score:          {variant_b['avg_overall']:.2f}")
 
-    print("\n📉 Baseline Average Scores:")
-    print(f"   Global Consistency:     {baseline['avg_consistency']:.2f}")
-    print(f"   Information Synthesis:  {baseline['avg_synthesis']:.2f}")
-    print(f"   Interaction Trajectory: {baseline['avg_trajectory']:.2f}")
-    print(f"   Tone Consistency:       {baseline['avg_tone']:.2f}")
-    print(f"   Overall Score:          {baseline['avg_overall']:.2f}")
+    print(f"\n📉 {label_a.upper()} Average Scores:")
+    print(f"   Global Consistency:     {variant_a['avg_consistency']:.2f}")
+    print(f"   Information Synthesis:  {variant_a['avg_synthesis']:.2f}")
+    print(f"   Interaction Trajectory: {variant_a['avg_trajectory']:.2f}")
+    print(f"   Tone Consistency:       {variant_a['avg_tone']:.2f}")
+    print(f"   Overall Score:          {variant_a['avg_overall']:.2f}")
 
-    rag_better = paired_stats["rag_better_count"]
-    baseline_better = paired_stats["baseline_better_count"]
+    b_better = paired_stats.get(f"{label_b}_better_count", paired_stats.get("rag_better_count", 0))
+    a_better = paired_stats.get(f"{label_a}_better_count", paired_stats.get("baseline_better_count", 0))
     tie = paired_stats["tie_count"]
 
     print(f"\n🏆 Win/Loss Breakdown:")
-    print(f"   RAG Better:      {rag_better:3d} ({rag_better/total*100:.1f}%)")
-    print(f"   Baseline Better: {baseline_better:3d} ({baseline_better/total*100:.1f}%)")
+    print(f"   {label_b.upper()} Better:      {b_better:3d} ({b_better/total*100:.1f}%)")
+    print(f"   {label_a.upper()} Better: {a_better:3d} ({a_better/total*100:.1f}%)")
     print(f"   Tie (±0.1):      {tie:3d} ({tie/total*100:.1f}%)")
 
     # Show top improvements and regressions
     pairs_sorted = sorted(paired_stats["pairs"], key=lambda x: x["overall_diff"], reverse=True)
 
-    print(f"\n⬆️  Top 5 RAG Improvements:")
+    print(f"\n⬆️  Top 5 {label_b.upper()} Improvements:")
     for i, pair in enumerate(pairs_sorted[:5], 1):
         if pair["overall_diff"] > 0:
             print(f"   {i}. {pair['dialogue_id'][:20]}... : +{pair['overall_diff']:.2f}")
 
-    print(f"\n⬇️  Top 5 RAG Regressions:")
+    print(f"\n⬇️  Top 5 {label_b.upper()} Regressions:")
     for i, pair in enumerate(reversed(pairs_sorted[-5:]), 1):
         if pair["overall_diff"] < 0:
             print(f"   {i}. {pair['dialogue_id'][:20]}... : {pair['overall_diff']:.2f}")
@@ -710,8 +897,52 @@ def print_paired_comparison_report(paired_stats, output_path=None):
 # -----------------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Evaluate AI Shopping Assistant dialogues with RAG vs Baseline comparison"
+        description="Evaluate AI Shopping Assistant dialogues with flexible A vs B comparison",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Compare two directories with custom labels (multimodal vs text-only)
+  python %(prog)s --dir-a /path/to/text_only --dir-b /path/to/multimodal \\
+                  --label-a text_only --label-b multimodal --output-dir results
+
+  # Compare RAG vs baseline (using default labels)
+  python %(prog)s --dir-a /path/to/baseline --dir-b /path/to/rag --output-dir results
+
+  # Legacy: evaluate all categories from standard directory structure
+  python %(prog)s --all --output-dir eval_results
+
+  # Legacy: single input directory
+  python %(prog)s --input /path/to/dialogues --output results.json
+"""
     )
+
+    # New dual-directory mode
+    parser.add_argument(
+        "--dir-a",
+        type=str,
+        default=None,
+        help="First directory containing dialogue JSON files"
+    )
+    parser.add_argument(
+        "--dir-b",
+        type=str,
+        default=None,
+        help="Second directory containing dialogue JSON files"
+    )
+    parser.add_argument(
+        "--label-a",
+        type=str,
+        default=DEFAULT_LABEL_A,
+        help=f"Label for first directory (default: {DEFAULT_LABEL_A})"
+    )
+    parser.add_argument(
+        "--label-b",
+        type=str,
+        default=DEFAULT_LABEL_B,
+        help=f"Label for second directory (default: {DEFAULT_LABEL_B})"
+    )
+
+    # Legacy modes
     parser.add_argument(
         "--all",
         action="store_true",
@@ -721,39 +952,50 @@ if __name__ == "__main__":
         "--output-dir",
         type=str,
         default="eval_results",
-        help="Output directory for all-categories mode (default: eval_results)"
+        help="Output directory for results (default: eval_results)"
     )
     parser.add_argument(
         "--input",
         type=str,
         default=None,
-        help="Directory containing dialogue JSON files (auto-detects baseline/RAG) or single JSON file"
+        help="[Legacy] Directory containing dialogue JSON files (auto-detects baseline/RAG) or single JSON file"
     )
     parser.add_argument(
         "--output",
         type=str,
         default="aggregate_eval.json",
-        help="Output file for evaluation results (default: aggregate_eval.json)"
+        help="[Legacy] Output file for evaluation results (default: aggregate_eval.json)"
     )
     parser.add_argument(
         "--profiles",
         type=str,
         default=None,
-        help="User profiles JSON file (optional, generated by generate_user_profiles.py)"
+        help="User profiles JSON file (optional)"
     )
     parser.add_argument(
         "--paired-output",
         type=str,
         default=None,
-        help="Output file for paired comparison results (optional, e.g., paired_comparison.json)"
+        help="[Legacy] Output file for paired comparison results"
     )
     args = parser.parse_args()
 
-    if args.all:
+    # Determine which mode to use
+    if args.dir_a and args.dir_b:
+        # New dual-directory mode
+        batch_evaluate_dual(
+            args.dir_a,
+            args.dir_b,
+            args.label_a,
+            args.label_b,
+            args.output_dir,
+            args.profiles
+        )
+    elif args.all:
         # All-categories mode
         batch_evaluate_all_categories(args.output_dir)
-    else:
-        # Single input mode (legacy)
-        if not args.input:
-            parser.error("--input is required when not using --all mode")
+    elif args.input:
+        # Legacy single input mode
         batch_evaluate(args.input, args.output, args.profiles, args.paired_output)
+    else:
+        parser.error("Must specify either --dir-a and --dir-b, --all, or --input")
