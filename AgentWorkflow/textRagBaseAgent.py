@@ -10,7 +10,7 @@ import json
 import sys
 import argparse
 import re
-from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, append_agent_message, save_round_summary, load_previous_round_summaries, get_current_round_number, set_dataset_category, clear_user_storage, _user_paths
+from ragFunctions import save_chat_history, rag_search_for_recommend_agent, rag_search_for_dialogue_history_agent, append_agent_message, save_round_summary, load_previous_round_summaries, get_current_round_number, set_dataset_category, clear_user_storage, clear_single_user_storage, _user_paths
 from agent_prompts import get_dialogue_history_prompt, get_recommender_prompt, get_reasoner_prompt, get_reply_prompt
 
 # Custom logger class to capture all print outputs
@@ -374,15 +374,15 @@ def run_single_category(json_path, category, target_user=None):
             print(f"[SUCCESS] Exported dialogues to: {export_result}")
 
         # Backup chat_history.jsonl before clearing
-        up = _user_paths(user)
+        up = _user_paths(user, category)
         if up["chat_history"].exists():
             backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_path = eval_dir / f"{category}_{user}_{backup_timestamp}.jsonl"
             shutil.copy2(up["chat_history"], backup_path)
             print(f"[BACKUP] Chat history saved to: {backup_path}")
 
-        # Clear user storage after each user completes
-        clear_user_storage()
+        # Clear this user's storage (only clears this user in this category)
+        clear_single_user_storage(user, category)
 
     return results
 

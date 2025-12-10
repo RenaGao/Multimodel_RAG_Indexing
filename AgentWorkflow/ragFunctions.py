@@ -40,12 +40,42 @@ def get_dataset_category() -> str:
 for p in [VSTORE_DIR, CATALOG_DIR, USERS_DIR]:
     p.mkdir(parents=True, exist_ok=True)
 
-def clear_user_storage():
-    """Clear entire user storage directory."""
-    if USERS_DIR.exists():
-        shutil.rmtree(USERS_DIR)
-        USERS_DIR.mkdir(parents=True, exist_ok=True)
-        print(f"[CLEAR] Cleared entire USERS_DIR")
+def clear_user_storage(category: str = None):
+    """
+    Clear user storage directory.
+
+    Args:
+        category: If provided, only clear storage for this category.
+                  If None, clears entire USERS_DIR.
+    """
+    if category:
+        category_dir = USERS_DIR / category
+        if category_dir.exists():
+            shutil.rmtree(category_dir)
+            category_dir.mkdir(parents=True, exist_ok=True)
+            print(f"[CLEAR] Cleared user storage for category: {category}")
+    else:
+        if USERS_DIR.exists():
+            shutil.rmtree(USERS_DIR)
+            USERS_DIR.mkdir(parents=True, exist_ok=True)
+            print(f"[CLEAR] Cleared entire USERS_DIR")
+
+
+def clear_single_user_storage(user_name: str, category: str = None):
+    """
+    Clear storage for a single user.
+
+    Args:
+        user_name: User identifier
+        category: Dataset category (if None, uses get_dataset_category())
+    """
+    if category is None:
+        category = get_dataset_category()
+
+    udir = USERS_DIR / category / _safe_user_dir(user_name)
+    if udir.exists():
+        shutil.rmtree(udir)
+        print(f"[CLEAR] Cleared storage for user: {user_name} in category: {category}")
 
 def item_index_dir() -> Path:
     return CATALOG_DIR / get_dataset_category() / "item_index_qwen3"
@@ -73,8 +103,23 @@ def _hash_bytes(b: bytes) -> str:
 def _safe_user_dir(user_name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_\-]+", "_", user_name or "anonymous")
 
-def _user_paths(user_name: str) -> Dict[str, Path]:
-    udir = USERS_DIR / _safe_user_dir(user_name)
+def _user_paths(user_name: str, category: str = None) -> Dict[str, Path]:
+    """
+    Get user storage paths. Uses category/user_name structure to avoid conflicts
+    when the same user_id appears in different categories.
+
+    Args:
+        user_name: User identifier
+        category: Dataset category (if None, uses get_dataset_category())
+
+    Returns:
+        Dict with paths for user storage
+    """
+    if category is None:
+        category = get_dataset_category()
+
+    # Use category/user_name structure to avoid conflicts
+    udir = USERS_DIR / category / _safe_user_dir(user_name)
     udir.mkdir(parents=True, exist_ok=True)
     return {
         "root": udir,

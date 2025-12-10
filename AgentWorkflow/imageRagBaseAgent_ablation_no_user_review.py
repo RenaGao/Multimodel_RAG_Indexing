@@ -30,7 +30,8 @@ from ragFunctions import (
     load_previous_round_summaries,
     get_current_round_number,
     set_dataset_category,
-    _user_paths
+    _user_paths,
+    clear_single_user_storage
 )
 from agent_prompts import (
     get_dialogue_history_prompt,
@@ -118,14 +119,6 @@ def is_category_completed(questions_path, category):
     users = set(load_all_users(questions_path))
     completed = get_completed_users(category)
     return users.issubset(completed)
-
-def clear_single_user_storage(user_name: str):
-    """Clear storage for a single user (thread-safe)."""
-    from ragFunctions import _safe_user_dir, USERS_DIR
-    udir = USERS_DIR / _safe_user_dir(user_name)
-    if udir.exists():
-        shutil.rmtree(udir)
-        thread_safe_print(f"[CLEAR] Cleared storage for user: {user_name}")
 
 def make_simple_flow(user_agent, dh_agent, rec_agent, rsn_agent, reply_agent,
                      agent_retry_counts, agent_tool_called, max_retries=3):
@@ -345,14 +338,15 @@ def process_single_user(user: str, questions: list, category: str, llm_config: d
         thread_safe_print(f"[SUCCESS] Exported dialogues to: {export_result}")
 
     # Backup chat_history.jsonl
-    up = _user_paths(user)
+    up = _user_paths(user, category)
     if up["chat_history"].exists():
         backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = eval_dir / f"{category}_{user}_{backup_timestamp}.jsonl"
         shutil.copy2(up["chat_history"], backup_path)
         thread_safe_print(f"[BACKUP] Chat history saved to: {backup_path}")
 
-    clear_single_user_storage(user)
+    # Clear this user's storage (thread-safe, only clears this user in this category)
+    clear_single_user_storage(user, category)
 
     return user_history
 
