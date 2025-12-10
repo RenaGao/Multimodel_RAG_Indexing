@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-重新处理有问题的对话脚本 (多线程版本)
-根据 problematic_dialogues.csv 中记录的问题对话
+Rerun problematic dialogues (multi-threaded version)
+Based on problematic_dialogues.csv
 """
 
 import os
@@ -12,10 +12,10 @@ from datetime import datetime
 from pathlib import Path
 import threading
 
-# 最大并行数
+# Max parallel workers
 MAX_WORKERS = 5
 
-# 线程安全打印
+# Thread-safe print
 print_lock = threading.Lock()
 
 def safe_print(msg):
@@ -23,10 +23,10 @@ def safe_print(msg):
         print(msg)
 
 # ==========================================
-# 问题对话列表
+# Problematic dialogue list
 # ==========================================
 
-# multimodal_dialogues_output 的问题对话 (6个)
+# multimodal_dialogues_output problems (6)
 MULTIMODAL_PROBLEMS = [
     ("Beauty_and_Personal_Care", "AEZP6Z2C5AVQDZAJECQYZWQRNG3Q"),
     ("Sports_and_Outdoors", "AGZZXSMMS4WRHHJRBUJZI4FZDHKQ"),
@@ -36,7 +36,7 @@ MULTIMODAL_PROBLEMS = [
     ("Health_and_Personal_Care", "AGNUU44ETNXLBOUB53LJGFJP3SQA"),
 ]
 
-# multimdoal_no_user_review_output 的问题对话 (7个)
+# multimdoal_no_user_review_output problems (7)
 NO_USER_REVIEW_PROBLEMS = [
     ("Pet_Supplies", "AEYVPPWR4CIKWX4BGYKCBCDL2CZQ"),
     ("Pet_Supplies", "AG73BVBKUOH22USSFJA5ZWL7AKXA"),
@@ -49,26 +49,26 @@ NO_USER_REVIEW_PROBLEMS = [
 
 
 def delete_old_files(output_dir: str, json_pattern: str, jsonl_pattern: str):
-    """删除旧的输出文件"""
+    """Delete old output files"""
     if not os.path.isdir(output_dir):
         return
 
-    # 删除JSON文件
+    # Delete JSON files
     for f in glob.glob(os.path.join(output_dir, json_pattern)):
         os.remove(f)
-        safe_print(f"  删除: {f}")
+        safe_print(f"  Deleted: {f}")
 
-    # 删除JSONL文件
+    # Delete JSONL files
     for f in glob.glob(os.path.join(output_dir, jsonl_pattern)):
         os.remove(f)
-        safe_print(f"  删除: {f}")
+        safe_print(f"  Deleted: {f}")
 
 
 def process_multimodal(category: str, user_id: str, log_dir: str) -> tuple:
-    """处理 multimodal 对话"""
-    safe_print(f"[multimodal] 开始: {category} / {user_id}")
+    """Process multimodal dialogue"""
+    safe_print(f"[multimodal] Starting: {category} / {user_id}")
 
-    # 删除旧文件
+    # Delete old files
     output_dir = f"./dialogue_outputs/multimodal_dialogues_output/{category}"
     delete_old_files(
         output_dir,
@@ -76,7 +76,7 @@ def process_multimodal(category: str, user_id: str, log_dir: str) -> tuple:
         f"{category}_{user_id}_*.jsonl"
     )
 
-    # 运行脚本
+    # Run script
     log_file = os.path.join(log_dir, f"multimodal_{category}_{user_id}.log")
     try:
         with open(log_file, 'w') as f:
@@ -84,26 +84,26 @@ def process_multimodal(category: str, user_id: str, log_dir: str) -> tuple:
                 ["python", "imageRagBaseAgent.py", "--category", category, "--user-id", user_id],
                 stdout=f,
                 stderr=subprocess.STDOUT,
-                timeout=1800  # 30分钟超时
+                timeout=1800  # 30 min timeout
             )
         success = result.returncode == 0
     except subprocess.TimeoutExpired:
         success = False
-        safe_print(f"[multimodal] 超时: {category} / {user_id}")
+        safe_print(f"[multimodal] Timeout: {category} / {user_id}")
     except Exception as e:
         success = False
-        safe_print(f"[multimodal] 错误: {category} / {user_id}: {e}")
+        safe_print(f"[multimodal] Error: {category} / {user_id}: {e}")
 
-    status = "成功" if success else "失败"
+    status = "Done" if success else "Failed"
     safe_print(f"[multimodal] {status}: {category} / {user_id}")
     return ("multimodal", category, user_id, success)
 
 
 def process_no_user_review(category: str, user_id: str, log_dir: str) -> tuple:
-    """处理 no_user_review 对话"""
-    safe_print(f"[no_user_review] 开始: {category} / {user_id}")
+    """Process no_user_review dialogue"""
+    safe_print(f"[no_user_review] Starting: {category} / {user_id}")
 
-    # 删除旧文件
+    # Delete old files
     output_dir = f"./dialogue_outputs/multimdoal_no_user_review_output/{category}"
     delete_old_files(
         output_dir,
@@ -111,7 +111,7 @@ def process_no_user_review(category: str, user_id: str, log_dir: str) -> tuple:
         f"{category}_{user_id}_*.jsonl"
     )
 
-    # 运行脚本
+    # Run script
     log_file = os.path.join(log_dir, f"no_user_review_{category}_{user_id}.log")
     try:
         with open(log_file, 'w') as f:
@@ -119,44 +119,44 @@ def process_no_user_review(category: str, user_id: str, log_dir: str) -> tuple:
                 ["python", "imageRagBaseAgent_ablation_no_user_review.py", "--category", category, "--user-id", user_id],
                 stdout=f,
                 stderr=subprocess.STDOUT,
-                timeout=1800  # 30分钟超时
+                timeout=1800  # 30 min timeout
             )
         success = result.returncode == 0
     except subprocess.TimeoutExpired:
         success = False
-        safe_print(f"[no_user_review] 超时: {category} / {user_id}")
+        safe_print(f"[no_user_review] Timeout: {category} / {user_id}")
     except Exception as e:
         success = False
-        safe_print(f"[no_user_review] 错误: {category} / {user_id}: {e}")
+        safe_print(f"[no_user_review] Error: {category} / {user_id}: {e}")
 
-    status = "成功" if success else "失败"
+    status = "Done" if success else "Failed"
     safe_print(f"[no_user_review] {status}: {category} / {user_id}")
     return ("no_user_review", category, user_id, success)
 
 
 def main():
-    # 切换到脚本所在目录
+    # Change to script directory
     script_dir = Path(__file__).parent
     os.chdir(script_dir)
 
-    # 创建日志目录
+    # Create log directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_dir = f"./logs/rerun_{timestamp}"
     os.makedirs(log_dir, exist_ok=True)
 
     print("=" * 60)
-    print("重新处理有问题的对话 (多线程版本)")
-    print(f"最大并行数: {MAX_WORKERS}")
-    print(f"日志目录: {log_dir}")
+    print("Rerun Problematic Dialogues (Multi-threaded)")
+    print(f"Max workers: {MAX_WORKERS}")
+    print(f"Log dir: {log_dir}")
     print("=" * 60)
 
     results = []
 
     # ==========================================
-    # 处理 multimodal_dialogues_output (6个)
+    # Process multimodal_dialogues_output (6)
     # ==========================================
-    print("\n[1/2] 并行处理 multimodal_dialogues_output 的问题对话...")
-    print(f"共 {len(MULTIMODAL_PROBLEMS)} 个任务\n")
+    print("\n[1/2] Processing multimodal_dialogues_output...")
+    print(f"Total tasks: {len(MULTIMODAL_PROBLEMS)}\n")
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = {
@@ -166,13 +166,13 @@ def main():
         for future in as_completed(futures):
             results.append(future.result())
 
-    print("\nmultimodal 批次完成!")
+    print("\nMultimodal batch done!")
 
     # ==========================================
-    # 处理 multimdoal_no_user_review_output (7个)
+    # Process multimdoal_no_user_review_output (7)
     # ==========================================
-    print("\n[2/2] 并行处理 multimdoal_no_user_review_output 的问题对话...")
-    print(f"共 {len(NO_USER_REVIEW_PROBLEMS)} 个任务\n")
+    print("\n[2/2] Processing multimdoal_no_user_review_output...")
+    print(f"Total tasks: {len(NO_USER_REVIEW_PROBLEMS)}\n")
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = {
@@ -182,27 +182,27 @@ def main():
         for future in as_completed(futures):
             results.append(future.result())
 
-    print("\nno_user_review 批次完成!")
+    print("\nNo_user_review batch done!")
 
     # ==========================================
-    # 汇总结果
+    # Summary
     # ==========================================
     print("\n" + "=" * 60)
-    print("处理结果汇总")
+    print("Results Summary")
     print("=" * 60)
 
     success_count = sum(1 for r in results if r[3])
     fail_count = len(results) - success_count
 
-    print(f"\n成功: {success_count}, 失败: {fail_count}")
+    print(f"\nSuccess: {success_count}, Failed: {fail_count}")
 
     if fail_count > 0:
-        print("\n失败的任务:")
+        print("\nFailed tasks:")
         for method, cat, uid, success in results:
             if not success:
                 print(f"  - [{method}] {cat} / {uid}")
 
-    print(f"\n日志目录: {log_dir}")
+    print(f"\nLog dir: {log_dir}")
     print("=" * 60)
 
 
