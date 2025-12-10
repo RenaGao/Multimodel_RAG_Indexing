@@ -14,7 +14,6 @@ __pycache__
 /AgentWorkflow/storage
 /AgentWorkflow/baseline_dialogues_output
 /image_captions
-/AgentWorkflow/dialogue_outputs
-/eval_results
 /eval_summary
-/eval_results.zip
+/eval_results
+/AgentWorkflow/dialogue_outputs

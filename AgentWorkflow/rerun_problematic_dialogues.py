@@ -26,25 +26,16 @@ def safe_print(msg):
 # Problematic dialogue list
 # ==========================================
 
-# multimodal_dialogues_output problems (6)
+# multimodal_dialogues_output problems (2)
 MULTIMODAL_PROBLEMS = [
-    ("Beauty_and_Personal_Care", "AEZP6Z2C5AVQDZAJECQYZWQRNG3Q"),
-    ("Sports_and_Outdoors", "AGZZXSMMS4WRHHJRBUJZI4FZDHKQ"),
     ("Amazon_Fashion", "AG73BVBKUOH22USSFJA5ZWL7AKXA"),
-    ("Office_Products", "AG375WAXLZ7PIOQKIQ6KQB4J3JVQ"),
     ("Health_and_Household", "AG73BVBKUOH22USSFJA5ZWL7AKXA"),
-    ("Health_and_Personal_Care", "AGNUU44ETNXLBOUB53LJGFJP3SQA"),
 ]
 
-# multimdoal_no_user_review_output problems (7)
+# multimdoal_no_user_review_output problems (2)
 NO_USER_REVIEW_PROBLEMS = [
-    ("Pet_Supplies", "AEYVPPWR4CIKWX4BGYKCBCDL2CZQ"),
-    ("Pet_Supplies", "AG73BVBKUOH22USSFJA5ZWL7AKXA"),
     ("Toys_and_Games", "AEIIRIHLIYKQGI7ZOCIJTRDF5NPQ"),
     ("Office_Products", "AEIIRIHLIYKQGI7ZOCIJTRDF5NPQ"),
-    ("Digital_Music", "AGAFM74L2RIJ5O36NNYH4Z5ISQNQ"),
-    ("Patio_Lawn_and_Garden", "AGUTZC4GHLTGYHA3KBEDRF6MHB6A"),
-    ("Health_and_Household", "AHPGHDFIU3BUB3RQBP56RQQA7W4Q"),
 ]
 
 
