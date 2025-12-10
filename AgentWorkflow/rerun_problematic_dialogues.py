@@ -76,12 +76,12 @@ def process_multimodal(category: str, user_id: str, log_dir: str) -> tuple:
         f"{category}_{user_id}_*.jsonl"
     )
 
-    # Run script
+    # Run script with conda environment
     log_file = os.path.join(log_dir, f"multimodal_{category}_{user_id}.log")
     try:
         with open(log_file, 'w') as f:
             result = subprocess.run(
-                ["python", "imageRagBaseAgent.py", "--category", category, "--user-id", user_id],
+                ["conda", "run", "-n", "mmgraphrag", "python", "imageRagBaseAgent.py", "--category", category, "--user-id", user_id],
                 stdout=f,
                 stderr=subprocess.STDOUT,
                 timeout=1800  # 30 min timeout
@@ -111,12 +111,12 @@ def process_no_user_review(category: str, user_id: str, log_dir: str) -> tuple:
         f"{category}_{user_id}_*.jsonl"
     )
 
-    # Run script
+    # Run script with conda environment
     log_file = os.path.join(log_dir, f"no_user_review_{category}_{user_id}.log")
     try:
         with open(log_file, 'w') as f:
             result = subprocess.run(
-                ["python", "imageRagBaseAgent_ablation_no_user_review.py", "--category", category, "--user-id", user_id],
+                ["conda", "run", "-n", "mmgraphrag", "python", "imageRagBaseAgent_ablation_no_user_review.py", "--category", category, "--user-id", user_id],
                 stdout=f,
                 stderr=subprocess.STDOUT,
                 timeout=1800  # 30 min timeout
