@@ -1,19 +1,32 @@
+# Environment / secrets
+.env
+.venv
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+
+# Ad-hoc / scratch
 EcomMMMU.json
 questions_test.py
 pairs.jsonl
 training_metrics.json
-/data
+
+# Generic ignored output dirs
 /logs
 /lora_query_gen
 /cache_images
 /outputs
-.env
-.venv
-__pycache__
-./DS_Store
-/AgentWorkflow/storage
-/AgentWorkflow/baseline_dialogues_output
 /image_captions
 /eval_summary
 /eval_results
-/AgentWorkflow/dialogue_outputs
+
+# Per-agent runtime artifacts (RAG indices, dialogue outputs)
+src/agents/storage/
+src/agents/baseline_dialogues_output/
+src/agents/dialogue_outputs/
+src/agents/multimodal_dialogues_output/
+src/agents/text_rag_dialogues_output/
