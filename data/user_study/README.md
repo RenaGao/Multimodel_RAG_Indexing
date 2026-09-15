@@ -7,3 +7,5 @@ Each row is one participant. The file retains five consecutive blocks of six que
 Original response IDs, names, email addresses, and start, completion, and modification times were removed. Rows were shuffled and assigned IDs P01–P05. No identity mapping is included. The workbook was rebuilt without source document properties, custom properties, or printer settings.
 
 This file records the interactive user study. It does not establish the number of annotators in the separate dialogue-rating check described in the paper.
+
+The repository's MIT License applies to original code, not to this response dataset. No data license is granted by that code license.

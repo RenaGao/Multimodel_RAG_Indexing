@@ -130,4 +130,6 @@ environment variables in `.env` (template in `.env.example`).
 
 ## License
 
-To be added.
+Original source code in this repository is licensed under the [MIT License](LICENSE), unless a file states otherwise.
+
+This license does not cover third-party code, dependencies, or data. In particular, it does not grant rights to Amazon Reviews 2023, product images or reviews, derived datasets, or user-study responses. Third-party materials remain subject to their respective terms; no additional data license is granted here.
