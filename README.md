@@ -1,7 +1,8 @@
-# Multimodal RAG-Indexed Personalized Shopping Agents
+# Personalization Matters: Long-Horizon Conversation Agent with User-Centric Information in Online Shopping Interactions
 
-This repository accompanies the paper *Multimodal RAG Indexing for Personalized
-Shopping-Agent Evaluation*. It contains the full pipeline for:
+This repository accompanies the paper
+[*Personalization Matters: Long-Horizon Conversation Agent with User-Centric Information in Online Shopping Interactions*](https://arxiv.org/abs/2610.11375)
+(accepted at AACL-IJCNLP 2026). It contains the full pipeline for:
 
 1. building **per-user profiles** from review history,
 2. generating **decision-point shopping dialogues** that probe personalization,
