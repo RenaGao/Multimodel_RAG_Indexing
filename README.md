@@ -133,4 +133,6 @@ environment variables in `.env` (template in `.env.example`).
 
 Original source code in this repository is licensed under the [MIT License](LICENSE), unless a file states otherwise.
 
-This license does not cover third-party code, dependencies, or data. In particular, it does not grant rights to Amazon Reviews 2023, product images or reviews, derived datasets, or user-study responses. Third-party materials remain subject to their respective terms; no additional data license is granted here.
+This license does not cover third-party code, dependencies, or data. In particular, it does not grant rights to Amazon Reviews 2023, product images or reviews, or user-study responses. Third-party materials remain subject to their respective terms.
+
+The personalized questions and user profiles are released as the [PersonaShop dataset](https://huggingface.co/datasets/PersonalizedAgents/PersonaShop) on Hugging Face. The model-generated content there (user profiles and questions) is licensed under CC BY 4.0; the Amazon Reviews 2023 content it includes remains subject to the terms of that dataset. See the dataset card for details.
